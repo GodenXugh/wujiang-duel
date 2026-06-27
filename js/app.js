@@ -352,25 +352,60 @@
     },
 
     drawBg(ctx, W, H, now) {
-      // 天空渐变带
-      const sky = ["#3a78f0", "#5c94fc", "#86b0ff", "#b6d2ff"];
-      for (let i = 0; i < sky.length; i++) { ctx.fillStyle = sky[i]; ctx.fillRect(0, i * 24, W, 24); }
-      ctx.fillStyle = "#cfe2ff"; ctx.fillRect(0, 96, W, 8);
-      // 太阳
-      ctx.fillStyle = "#fff0a0"; ctx.fillRect(W - 44, 12, 18, 18);
-      ctx.fillStyle = "#ffe060"; ctx.fillRect(W - 42, 14, 14, 14);
-      // 远山
-      ctx.fillStyle = "#2c6e3a";
-      for (let mx = -20; mx < W + 20; mx += 70) this.tri(ctx, mx, 96, 44, 30, "#2c6e3a");
-      for (let mx = 16; mx < W + 20; mx += 70) this.tri(ctx, mx, 96, 56, 40, "#235c30");
-      // 草地
-      ctx.fillStyle = "#3cac34"; ctx.fillRect(0, 104, W, H - 104);
-      ctx.fillStyle = "#34982c"; ctx.fillRect(0, 104, W, 4);
-      // 田垄线 + 草点
+      const P = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(x | 0, y | 0, w | 0, h | 0); };
+      // 黄昏战场天空：多段渐变
+      const sky = ["#243b6e", "#3a5a9c", "#5c7fc8", "#8aa6df", "#c9b6c0", "#f0c79a"];
+      for (let i = 0; i < sky.length; i++) P(0, i * 16, W, 17, sky[i]);
+      // 落日 + 光晕
+      const sunX = W - 50, sunY = 26;
+      P(sunX - 12, sunY - 12, 24, 24, "rgba(255,220,140,.25)");
+      P(sunX - 9, sunY - 9, 18, 18, "#ffe9a8");
+      P(sunX - 7, sunY - 7, 14, 14, "#ffd45a");
+      // 霞光横纹
+      ctx.fillStyle = "rgba(255,210,140,.18)";
+      for (let y = 8; y < 90; y += 12) ctx.fillRect(0, y, W, 2);
+      // 飘云（缓慢平移）
+      const cloud = (cx, cy, s, col) => { P(cx, cy, 14 * s, 4, col); P(cx + 5, cy - 3, 10 * s, 4, col); P(cx + 12 * s, cy, 10 * s, 4, col); };
+      const t = now * 0.004;
+      ctx.globalAlpha = .85;
+      cloud(((40 + t) % (W + 60)) - 40, 18, 1.4, "#eef0f6");
+      cloud(((150 + t * 0.7) % (W + 60)) - 40, 34, 1.0, "#dfe4ef");
+      cloud(((250 + t * 1.3) % (W + 60)) - 40, 12, 1.1, "#f6f1ee");
+      ctx.globalAlpha = 1;
+      // 远山三层（越远越淡）
+      for (let mx = -30; mx < W + 30; mx += 90) this.tri(ctx, mx, 98, 70, 34, "#6a6f9a");
+      for (let mx = 20; mx < W + 30; mx += 80) this.tri(ctx, mx, 100, 60, 44, "#4a5a7e");
+      // 远处城郭剪影
+      const cxs = W * 0.5 | 0;
+      P(cxs - 26, 78, 52, 22, "#2e3a55");
+      P(cxs - 30, 86, 60, 14, "#283250");
+      for (let i = -2; i <= 2; i++) P(cxs + i * 11 - 2, 72, 5, 8, "#2e3a55"); // 城垛
+      P(cxs - 4, 64, 8, 16, "#37456a"); P(cxs - 6, 60, 12, 5, "#a01818"); // 天守 + 红旗
+      // 近山（深绿）
+      for (let mx = -10; mx < W + 30; mx += 64) this.tri(ctx, mx, 104, 56, 30, "#235c30");
+      // 草原
+      P(0, 104, W, H - 104, "#3fae37");
+      P(0, 104, W, 5, "#48c23e");
       ctx.fillStyle = "#2f8a28";
-      for (let y = 116; y < H; y += 10) ctx.fillRect(0, y, W, 1);
-      ctx.fillStyle = "#54c44a";
-      for (let i = 0; i < 40; i++) { const gx = (i * 53 + (now * 0.0 | 0)) % W; const gy = 110 + (i * 17) % (H - 112); ctx.fillRect(gx, gy, 2, 2); }
+      for (let y = 118; y < H; y += 9) ctx.fillRect(0, y, W, 1);
+      // 草丛与野花点缀（固定布局）
+      for (let i = 0; i < 46; i++) {
+        const gx = (i * 71 + 13) % W, gy = 112 + (i * 29) % (H - 116);
+        P(gx, gy, 2, 3, "#2c8a24"); P(gx + 2, gy - 1, 2, 3, "#56cc46");
+        if (i % 7 === 0) P(gx + 1, gy - 2, 2, 2, i % 14 === 0 ? "#ffe24d" : "#ff7aa0");
+      }
+      // 两侧军旗
+      this.banner(ctx, 10, 104, "#c1272d", now);
+      this.banner(ctx, W - 14, 104, "#2b3a67", now);
+    },
+    // 战旗（旗杆 + 飘动旗面）
+    banner(ctx, x, groundY, col, now) {
+      const P = (px, py, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(px | 0, py | 0, w | 0, h | 0); };
+      P(x, groundY - 46, 2, 46, "#5a4a2a");
+      P(x - 1, groundY - 48, 4, 3, "#e8c25a");
+      const wv = Math.sin(now * 0.006) * 2;
+      for (let i = 0; i < 7; i++) { const fy = groundY - 44 + i * 3; P(x + 2, fy, 16 + (i % 2 ? wv : -wv), 3, col); }
+      P(x + 4, groundY - 40, 8, 8, "#e8c25a"); // 旗徽
     },
     tri(ctx, cx, baseY, w, h, col) {
       ctx.fillStyle = col;
@@ -422,6 +457,12 @@
       P(18, 2, yb - 33, 2, horse);             // 耳
       P(13, 3, yb - 29, 9, mane);              // 鬃
       P(22, 1, yb - 29, 1, "#000");            // 眼
+      // 背旗（指物，随风飘动）
+      const bw = 9 + Math.round(Math.sin(now * 0.008) * 1.5);
+      P(-10, 2, yb - 50, 22, "#5a4a2a");       // 旗杆
+      P(-10 - (bw - 9), bw, yb - 49, 14, armor); // 旗面
+      P(-10 - (bw - 9), bw, yb - 49, 3, gold);   // 旗顶
+      P(-10 - (bw - 9) + 2, bw - 4, yb - 44, 5, gold); // 旗徽
       // 鞍 + 骑将
       P(-6, 13, yb - 21, 3, armor2);
       P(-4, 3, yb - 21, 7, armor2); P(4, 3, yb - 21, 7, armor2);  // 腿
@@ -432,8 +473,16 @@
       P(5, 7, yb - 30, 3, skin);               // 持枪手臂
       P(-2, 7, yb - 39, 7, skin);              // 头
       P(-3, 9, yb - 41, 3, armor2);            // 头盔
-      P(0, 2, yb - 45, 4, gold);               // 盔缨
+      P(0, 2, yb - 47, 6, gold);               // 盔缨（加高）
+      P(-2, 2, yb - 44, 4, "#fff");            // 缨穗高光
       P(3, 1, yb - 37, 1, "#000");             // 眼
+      // 马蹄扬尘（移动时）
+      if (Math.abs(r.x - r.baseX) > 3) {
+        ctx.globalAlpha = alpha * 0.5;
+        const d = (now / 80 | 0) % 3;
+        P(-18 - d * 2, 4, yb - 2, 3, "#d9c9a0"); P(-22 - d, 3, yb - 5, 2, "#e8dcc0");
+        ctx.globalAlpha = alpha;
+      }
       // 长枪（上扬）
       P(11, 2, yb - 54, 2, mane);
       for (let i = 0; i < 22; i++) P(11 + i * 0.18, 2, yb - 54 + i, 2, "#7a5020"); // 斜枪杆
@@ -738,12 +787,19 @@
    *  阵营大战（自动模拟 100 vs 100）
    * ============================================================ */
   const War = {
-    running: false,
+    running: false, mode: "fast",
+    setMode(m) {
+      this.mode = m;
+      $("#war-mode-fast").classList.toggle("active", m === "fast");
+      $("#war-mode-detail").classList.toggle("active", m === "detail");
+      if (m === "fast") $("#war-duel").innerHTML = "";
+    },
     async start(hero) {
       if (this.running) return;
       this.running = true;
       $("#war-start").disabled = true;
       $("#war-log").innerHTML = "";
+      $("#war-duel").innerHTML = "";
       let cn = DB.bySide("cn").map(clone);
       let jp = DB.bySide("jp").map(clone);
       shuffle(cn); shuffle(jp);
@@ -769,6 +825,19 @@
         const winSide = res.winner.side;
         bump(res.winner);  // res.winner 即 cnFighter 或 jpFighter 本身
         if (hero && res.winner.id === -1) heroKills++;
+
+        // 详情模式：逐回合演示这场厮杀
+        if (this.mode === "detail") {
+          const a = cnFighter, b = jpFighter;
+          for (let s = 0; s < res.hpSeq.length; s++) {
+            if (this.mode !== "detail") break;
+            this.renderDuel(a, b, res.hpSeq[s][0], res.hpSeq[s][1], s === res.hpSeq.length - 1 ? res.winner : null);
+            if (s > 0) AudioSystem.sfx.hit();
+            await sleep(s === 0 ? 260 : 300);
+          }
+          await sleep(260);
+        }
+
         const wlog = $("#war-log");
         const ln = document.createElement("div");
         ln.className = winSide === "cn" ? "w-cn" : "w-jp";
@@ -783,9 +852,10 @@
 
         $("#war-cn").textContent = cn.length - cnIdx;
         $("#war-jp").textContent = jp.length - jpIdx;
-        AudioSystem.sfx.hit();
-        await sleep(hero ? 90 : 140);
+        if (this.mode !== "detail") AudioSystem.sfx.hit();
+        await sleep(this.mode === "detail" ? 60 : (hero ? 90 : 140));
       }
+      $("#war-duel").innerHTML = "";
       const cnWin = cnIdx < cn.length;
       $("#war-status").textContent = cnWin ? "🐲 三国 全军获胜！" : "🏯 战国 全军获胜！";
       AudioSystem.sfx.victory();
@@ -806,6 +876,25 @@
         </div></div>`);
       $("#war-again").onclick = () => { closeOverlay(); this.start(); };
       $("#war-home").onclick = () => { closeOverlay(); showScreen("home"); };
+    },
+    // 详情观战：单场厮杀的双方体力演示
+    renderDuel(a, b, hpA, hpB, winner) {
+      const pa = Math.max(0, Math.round(hpA / a.ti * 100)), pb = Math.max(0, Math.round(hpB / b.ti * 100));
+      const nm = g => (g.id === -1 ? "★" : "") + g.name;
+      const wa = winner && winner === a ? "win" : (winner ? "lose" : "");
+      const wb = winner && winner === b ? "win" : (winner ? "lose" : "");
+      $("#war-duel").innerHTML = `
+        <div class="wd-side ${a.side}">
+          <div class="wd-name ${wa}">${nm(a)}</div>
+          <div class="wd-hpbar"><span class="wd-fill" style="width:${pa}%"></span></div>
+          <div class="wd-hp">${Math.max(0, Math.round(hpA))}</div>
+        </div>
+        <div class="wd-vs">${winner ? '✓' : '⚔'}</div>
+        <div class="wd-side ${b.side} right">
+          <div class="wd-name ${wb}">${nm(b)}</div>
+          <div class="wd-hpbar"><span class="wd-fill" style="width:${pb}%"></span></div>
+          <div class="wd-hp">${Math.max(0, Math.round(hpB))}</div>
+        </div>`;
     },
     // 击杀数排行榜（取前 8）
     renderRank(kills) {
@@ -1505,6 +1594,8 @@
 
     // 阵营战
     $("#war-start").onclick = () => War.start();
+    $("#war-mode-fast").onclick = () => War.setMode("fast");
+    $("#war-mode-detail").onclick = () => War.setMode("detail");
 
     // 战斗控制：自动作战 / 速度
     $("#btn-auto").onclick = () => {

@@ -11,6 +11,3 @@ dist/
 .DS_Store
 Thumbs.db
 *.log
-
-# 本地音乐（版权 OST，不公开分发；缺失时自动回退芯片音乐）
-assets/bgm/*.mp3

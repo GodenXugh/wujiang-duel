@@ -371,6 +371,28 @@ html, body {
 .war-log .w-cn { color: #ffcdd2; }
 .war-log .w-jp { color: #bbdefb; }
 
+/* 观战模式切换 */
+.war-mode { display: flex; align-items: center; gap: 8px; padding: 8px 14px 2px; }
+.war-mode-lbl { color: #c9b890; font-size: 15px; }
+.war-mode-btn { padding: 8px 16px; border-radius: 20px; cursor: pointer; font-family: inherit; font-size: 15px;
+  background: rgba(255,255,255,.06); border: 1px solid rgba(212,175,55,.4); color: var(--paper); }
+.war-mode-btn.active { background: linear-gradient(135deg, var(--cn-red), #7a1420); color: #fff; border-color: var(--cn-gold); }
+
+/* 详情观战单场面板 */
+.war-duel { margin: 4px 14px; display: grid; }
+.war-duel:empty { display: none; }
+.war-duel { grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px;
+  background: rgba(0,0,0,.4); border: 2px solid var(--cn-gold); border-radius: 12px; padding: 12px; }
+.wd-side { text-align: center; min-width: 0; }
+.wd-name { font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wd-side.cn .wd-name { color: #ff9a9a; } .wd-side.jp .wd-name { color: #9ab6ff; }
+.wd-name.win { color: var(--cn-gold); } .wd-name.lose { opacity: .5; text-decoration: line-through; }
+.wd-hpbar { height: 12px; background: rgba(0,0,0,.5); border: 1px solid rgba(212,175,55,.3); border-radius: 6px; overflow: hidden; margin: 5px 0; }
+.wd-fill { display: block; height: 100%; background: var(--hp-good); transition: width .25s; }
+.wd-side.right .wd-fill { margin-left: auto; }
+.wd-hp { font-family: "DotGothic16", monospace; font-size: 20px; font-weight: 700; color: var(--cn-gold); }
+.wd-vs { font-size: 24px; color: var(--cn-red); font-weight: 900; }
+
 /* 阵营大战击杀排行榜 */
 .war-rank { margin: 0 14px 8px; background: rgba(0,0,0,.4); border: 1px solid rgba(212,175,55,.3); border-radius: 10px; padding: 8px 12px; }
 .war-rank:empty { display: none; }

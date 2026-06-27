@@ -1,5 +1,5 @@
 /* Service Worker — 离线缓存，使游戏可作为 PWA 安装并离线运行 */
-const CACHE = "wujiang-v11";
+const CACHE = "wujiang-v12";
 const ASSETS = [
   "./",
   "./index.html",
@@ -12,6 +12,9 @@ const ASSETS = [
   "./icons/icon.svg",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
+  "./assets/bgm/single_combat.mp3",
+  "./assets/bgm/tactics.mp3",
+  "./assets/bgm/player_select.mp3",
 ];
 
 self.addEventListener("install", e => {
