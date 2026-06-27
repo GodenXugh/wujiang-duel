@@ -58,10 +58,19 @@
   const GRADE_COLOR = { SS: "#f4c430", S: "#ff4d3d", A: "#ff9020", B: "#3b9aff", C: "#46c357", D: "#c7923f", E: "#b0705a" };
   function gradeColor(v) { return GRADE_COLOR[rateLetter(v)]; }
 
+  const BGM = {
+    select: "assets/bgm/player_select.mp3",   // 选将
+    battle: "assets/bgm/single_combat.mp3",   // 单挑
+    war: "assets/bgm/tactics.mp3",            // 阵营大战
+    cup: "assets/bgm/tactics.mp3",            // 世界杯（沿用战术曲）
+  };
   function showScreen(id) {
     $$(".screen").forEach(s => s.classList.remove("active"));
     $("#screen-" + id).classList.add("active");
     if (id !== "battle" && typeof Duel !== "undefined" && Duel.stop) Duel.stop();
+    // 按界面切换背景乐：指定界面用 OST，其余回退芯片乐
+    if (BGM[id]) AudioSystem.playFile(BGM[id]);
+    else AudioSystem.playChip();
     AudioSystem.resume();
   }
 
@@ -743,8 +752,11 @@
       // RPG 英雄出战：替入其所属阵营的首位
       if (hero) { (hero.side === "cn" ? cn : jp)[0] = clone(hero); }
       let heroKills = 0;
+      const kills = new Map();  // 击杀榜：fighter -> {g, kills}
+      const bump = g => { const k = kills.get(g) || { g, kills: 0 }; k.kills++; kills.set(g, k); };
       $("#war-cn").textContent = cn.length;
       $("#war-jp").textContent = jp.length;
+      $("#war-rank").innerHTML = "";
       $("#war-status").textContent = hero ? `${hero.name} 率军出阵…` : "两军捉对厮杀中…";
 
       // 各自为队列，轮番派将对决，败者出局，胜者保留（带伤）继续
@@ -755,6 +767,7 @@
         battleNo++;
         const res = autoBattle(cnFighter, jpFighter);
         const winSide = res.winner.side;
+        bump(res.winner);  // res.winner 即 cnFighter 或 jpFighter 本身
         if (hero && res.winner.id === -1) heroKills++;
         const wlog = $("#war-log");
         const ln = document.createElement("div");
@@ -763,6 +776,7 @@
         ln.innerHTML = `${pad(battleNo)} ${mark(cnFighter)} ⚔ ${mark(jpFighter)} → <b>${mark(res.winner)}</b> 胜 (${res.rounds}回合)`;
         wlog.appendChild(ln);
         wlog.scrollTop = wlog.scrollHeight;
+        this.renderRank(kills);
 
         if (res.winner.side === "cn") { jpIdx++; jpFighter = jp[jpIdx]; }
         else { cnIdx++; cnFighter = cn[cnIdx]; }
@@ -793,10 +807,17 @@
       $("#war-again").onclick = () => { closeOverlay(); this.start(); };
       $("#war-home").onclick = () => { closeOverlay(); showScreen("home"); };
     },
+    // 击杀数排行榜（取前 8）
+    renderRank(kills) {
+      const top = [...kills.values()].sort((a, b) => b.kills - a.kills).slice(0, 8);
+      $("#war-rank").innerHTML = `<div class="wr-title">⚔ 击杀排行榜</div>` + top.map((s, i) =>
+        `<div class="wr-row ${s.g.side}"><span class="wr-no">${i + 1}</span><span class="wr-name">${s.g.id === -1 ? '★' : ''}${s.g.name}</span><span class="wr-k">${s.kills}</span></div>`).join("");
+    },
     open() {
       $("#war-cn").textContent = DB.bySide("cn").length;
       $("#war-jp").textContent = DB.bySide("jp").length;
       $("#war-log").innerHTML = "";
+      $("#war-rank").innerHTML = "";
       $("#war-status").textContent = "点击「开战」，让两军百将随机捉对厮杀";
       showScreen("war");
     },
@@ -1305,7 +1326,7 @@
             <button class="btn-primary" id="rpg-cup-again">再战世界杯</button>
             <button class="btn-ghost" id="rpg-cup-hub">返回养成</button>
           </div></div>`);
-        $("#rpg-cup-again").onclick = () => { closeOverlay(); this.joinCup(); };
+        $("#rpg-cup-again").onclick = () => { closeOverlay(); this.joinCup(Tournament.size); };
         $("#rpg-cup-hub").onclick = () => { closeOverlay(); showScreen("rpg"); this.renderHub(); };
       }, 1200);
     },

@@ -364,12 +364,22 @@ html, body {
 .war-side .lbl { font-size: 15px; color: #c9b890; letter-spacing: 2px; }
 .war-vs { font-size: 28px; color: var(--accent); font-weight: 900; }
 .war-log {
-  margin: 0 14px; height: 200px; overflow-y: auto; background: rgba(0,0,0,.4);
+  margin: 0 14px; height: 150px; overflow-y: auto; background: rgba(0,0,0,.4);
   border-radius: 10px; padding: 10px 14px; font-size: 15px; line-height: 1.7;
   border: 1px solid rgba(212,175,55,.2);
 }
 .war-log .w-cn { color: #ffcdd2; }
 .war-log .w-jp { color: #bbdefb; }
+
+/* 阵营大战击杀排行榜 */
+.war-rank { margin: 0 14px 8px; background: rgba(0,0,0,.4); border: 1px solid rgba(212,175,55,.3); border-radius: 10px; padding: 8px 12px; }
+.war-rank:empty { display: none; }
+.wr-title { color: var(--cn-gold); font-size: 15px; font-weight: 700; margin-bottom: 5px; letter-spacing: 1px; }
+.wr-row { display: grid; grid-template-columns: 26px 1fr auto; align-items: center; gap: 8px; padding: 2px 0; font-size: 15px; }
+.wr-row .wr-no { text-align: center; color: #c9b890; font-family: "DotGothic16", monospace; }
+.wr-row:nth-child(2) .wr-no { color: var(--cn-gold); font-weight: 900; }
+.wr-row.cn .wr-name { color: #ff9a9a; } .wr-row.jp .wr-name { color: #9ab6ff; }
+.wr-row .wr-k { color: var(--cn-gold); font-weight: 700; font-family: "DotGothic16", monospace; }
 
 /* ---------- 数据库管理 ---------- */
 .db-toolbar { display: flex; gap: 8px; padding: 12px 14px; flex-wrap: wrap; }

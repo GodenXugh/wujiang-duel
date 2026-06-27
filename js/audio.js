@@ -157,11 +157,43 @@ const AudioSystem = (() => {
     victory() { if (!sfxOn) return; ensure(); ["D5", "F5", "A5", "D6"].forEach((n, i) => { voice("square", freq(n), i * 0.12, 0.45, 0.22, sfxGain); voice("triangle", freq(n.replace(/\d/, m => +m - 1)), i * 0.12, 0.45, 0.14, sfxGain); }); },
   };
 
+  /* ---- 文件背景乐（用户自备 OST）+ 缺失时回退芯片乐 ---- */
+  let bgmEl = null, curBgm = { type: "chip", src: null };
+  function ensureBgm() {
+    if (bgmEl) return;
+    bgmEl = new Audio();
+    bgmEl.loop = true; bgmEl.volume = 0.55; bgmEl.preload = "auto";
+    // 文件缺失/出错 → 回退芯片音乐
+    bgmEl.addEventListener("error", () => { if (curBgm.type === "file") { curBgm = { type: "chip", src: null }; if (musicOn) startMusic(); } });
+  }
+  // 播放指定 mp3（循环）；同一曲不重播
+  function playFile(src) {
+    ensure(); ensureBgm();
+    if (curBgm.type === "file" && curBgm.src === src) { if (musicOn) bgmEl.play().catch(() => {}); return; }
+    stopMusic();
+    curBgm = { type: "file", src };
+    bgmEl.src = src;
+    if (musicOn) bgmEl.play().catch(() => {});
+  }
+  // 回到程序化芯片音乐
+  function playChip() {
+    ensure();
+    if (bgmEl) bgmEl.pause();
+    curBgm = { type: "chip", src: null };
+    if (musicOn) startMusic();
+  }
+
   return {
-    init() { ensure(); if (ctx.state === "suspended") ctx.resume(); if (musicOn) startMusic(); },
-    resume() { if (ctx && ctx.state === "suspended") ctx.resume(); },
+    init() { ensure(); if (ctx.state === "suspended") ctx.resume(); if (musicOn && curBgm.type === "chip") startMusic(); },
+    resume() { if (ctx && ctx.state === "suspended") ctx.resume(); if (musicOn && curBgm.type === "file" && bgmEl) bgmEl.play().catch(() => {}); },
     sfx: SFX,
-    toggleMusic(on) { musicOn = on; if (on) startMusic(); else stopMusic(); },
+    playFile, playChip,
+    toggleMusic(on) {
+      musicOn = on;
+      if (!on) { stopMusic(); if (bgmEl) bgmEl.pause(); }
+      else if (curBgm.type === "file" && bgmEl) bgmEl.play().catch(() => startMusic());
+      else startMusic();
+    },
     toggleSfx(on) { sfxOn = on; },
     isMusicOn: () => musicOn,
     isSfxOn: () => sfxOn,
