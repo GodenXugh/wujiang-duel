@@ -59,13 +59,20 @@ html, body {
 }
 .topbar .back { font-size: 30px; cursor: pointer; padding: 4px 14px; border-radius: 8px; line-height: 1; }
 .topbar .back:active { background: rgba(255,255,255,.1); }
-.topbar h2 { margin: 0; font-size: 22px; color: var(--cn-gold); letter-spacing: 2px; flex: 1; }
-.audio-btns { display: flex; gap: 6px; }
+.topbar h2 { margin: 0; font-size: 22px; color: var(--cn-gold); letter-spacing: 2px; flex: 1;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audio-btns { display: flex; gap: 6px; align-items: center; }
 .audio-btns button {
   background: rgba(212,175,55,.15); border: 1px solid rgba(212,175,55,.4);
   color: var(--paper); border-radius: 8px; padding: 8px 12px; font-size: 17px; cursor: pointer;
 }
 .audio-btns button.off { opacity: .4; }
+/* 战斗顶栏内的「自动/速度」控制按钮（紧凑） */
+.topbar .ctrl-btn {
+  padding: 6px 9px; font-size: 13px; border-radius: 8px; letter-spacing: 0; cursor: pointer;
+  background: rgba(255,255,255,.06); border: 1px solid rgba(212,175,55,.4); color: var(--paper); font-family: inherit;
+}
+.topbar .ctrl-btn.on { background: linear-gradient(135deg, var(--cn-red), #7a1420); color:#fff; border-color: var(--cn-gold); }
 
 /* ---------- 标题页 ---------- */
 #screen-home { justify-content: center; align-items: center; text-align: center; padding: 24px; }
@@ -179,37 +186,39 @@ html, body {
     radial-gradient(ellipse at center 30%, rgba(212,175,55,.08), transparent 60%),
     repeating-linear-gradient(90deg, transparent, transparent 38px, rgba(0,0,0,.12) 39px, transparent 40px);
 }
-.fighters { display: flex; padding: 8px 12px 4px; gap: 10px; }
+.fighters { display: flex; padding: 8px 10px 4px; gap: 10px; }
 .fighter { flex: 1; min-width: 0; }
-.fighter .fhead { display: flex; align-items: flex-start; gap: 8px; }
-.fighter.right .fhead { flex-direction: row-reverse; text-align: right; }
+/* 上部：左=头像+姓名+简介(竖排)；右=总评+五维。右侧武将整体镜像 */
+.ftop { display: flex; align-items: flex-start; gap: 8px; }
+.fighter.right .ftop { flex-direction: row-reverse; }
+.fid { display: flex; flex-direction: column; align-items: center; width: 52px; flex-shrink: 0; }
 .fighter .favatar {
-  width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center; font-size: 21px; font-weight: 900; color: #fff;
+  width: 44px; height: 44px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; color: #fff;
   border: 2px solid var(--cn-gold);
 }
 .fighter.cn .favatar { background: linear-gradient(135deg, var(--cn-red), #7a1420); }
 .fighter.jp .favatar { background: linear-gradient(135deg, var(--jp-indigo), #141e3c); }
-.fighter .finfo { flex: 1; min-width: 0; }
-.fnameline { display: flex; align-items: baseline; gap: 6px; }
-.fighter.right .fnameline { flex-direction: row-reverse; }
-.fighter .fname { font-size: 17px; font-weight: 700; color: var(--cn-gold); line-height: 1.1;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fighter .ftotal { font-size: 11px; color: #c9b890; flex-shrink: 0; }
+.fighter .fname { font-size: 14px; font-weight: 700; color: var(--cn-gold); line-height: 1.15;
+  margin-top: 3px; text-align: center; width: 100%; word-break: break-word; }
+.fighter .ftitle { font-size: 9px; color: #c9b890; opacity: .8; line-height: 1.2; text-align: center;
+  width: 100%; word-break: break-word; }
+.fstats-wrap { flex: 1; min-width: 0; }
+.fighter .ftotal { font-size: 11px; color: #c9b890; margin-bottom: 2px; }
+.fighter.right .ftotal { text-align: right; }
 .fighter .ftotal b { color: var(--cn-gold); font-size: 14px; font-family: "DotGothic16", monospace; }
-.fighter .ftitle { font-size: 10px; color: #c9b890; opacity: .8; line-height: 1.2;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 姓名旁的五维紧凑彩条：两列网格，整体更矮 */
-.fstats { margin-top: 4px; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+/* 五维：评级 + 数值彩条 + 数值，逐行排列 */
+.fstats { display: flex; flex-direction: column; gap: 2px; }
 .fs-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .fighter.right .fs-row { flex-direction: row-reverse; }
 .fs-lbl { font-size: 10px; color: #c9b890; width: 11px; flex-shrink: 0; text-align: center; }
-.fs-track { flex: 1; height: 5px; min-width: 0; border-radius: 3px; background: rgba(0,0,0,.45); overflow: hidden; }
+.fs-track { flex: 1; height: 6px; min-width: 0; border-radius: 3px; background: rgba(0,0,0,.45); overflow: hidden; }
 .fs-bar { display: block; height: 100%; border-radius: 3px; }
 .fighter.right .fs-bar { margin-left: auto; }
-.fs-val { font-size: 10px; font-weight: 700; color: #d8c79c; width: 20px; flex-shrink: 0;
+.fs-val { font-size: 11px; font-weight: 700; color: #d8c79c; width: 22px; flex-shrink: 0;
   font-family: "DotGothic16", monospace; text-align: right; }
 .fighter.right .fs-val { text-align: left; }
+.fs-row .g { min-width: 18px; font-size: 9px; padding: 0 3px; }
 .hpbar-wrap { margin-top: 6px; }
 .hpbar {
   height: 16px; border-radius: 8px; background: rgba(0,0,0,.5); overflow: hidden;
