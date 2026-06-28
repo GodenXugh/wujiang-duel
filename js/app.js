@@ -248,6 +248,7 @@
    *  战斗界面（经典单挑 / 车轮战通用）
    * ============================================================ */
   let BATTLE = null;
+  let battleToken = 0;   // 每场战斗唯一票据，防止旧场的自动定时器误驱动新场
   const PREF = { auto: false, speed: 1 };
 
   function renderFighter(sel, fighter, sideClass) {
@@ -532,7 +533,7 @@
     }).join("");
     $$(".tactic-btn", wrap).forEach(b => {
       const cost = staminaCost(b.dataset.t, g);
-      b.disabled = !enabled || BATTLE.p1.stam < cost;
+      b.disabled = !enabled || BATTLE.spectate || BATTLE.p1.stam < cost;
       b.onclick = () => playerTactic(b.dataset.t);
     });
   }
@@ -545,6 +546,20 @@
     };
     $("#battle-title").textContent = rpg ? "历练单挑" : (isRandom ? "随机演武" : "经典单挑");
     enterBattle();
+  }
+
+  // 阵营大战「详情」模式：在经典单挑画面上自动演完整场对决，Promise 返回胜负
+  function autoPlayBattle(g1, g2, opts = {}) {
+    return new Promise(resolve => {
+      BATTLE = {
+        p1: makeFighter(g1), p2: makeFighter(g2),
+        round: 0, mode: "war", busy: false, spectate: true,
+        onWin: (winner, loser) => resolve({ winner, loser, rounds: BATTLE.round }),
+      };
+      $("#battle-title").textContent = opts.title || "阵营大战 · 单挑";
+      enterBattle();
+      if (opts.intro) logLine(opts.intro, "sys");
+    });
   }
 
   function battleSleep(ms) { return sleep(ms / (BATTLE.speed || 1)); }
@@ -561,8 +576,9 @@
     logLine(`体力=血量 武力=攻 智力=智谋 统帅=先手/减伤 政治=战意 魅力=会心/卸力`, "sys");
     BATTLE.busy = false;
     BATTLE.round = 0;
+    BATTLE.token = ++battleToken;
     BATTLE.speed = PREF.speed;
-    BATTLE.auto = PREF.auto;
+    BATTLE.auto = BATTLE.spectate ? true : PREF.auto;   // 阵营观战恒为自动
     // 头像点击查看详情
     $$("[data-info]", $("#screen-battle")).forEach(av => {
       av.onclick = function () {
@@ -580,8 +596,9 @@
     $("#round-badge").textContent = `第 ${BATTLE.round} 回合`;
     renderTactics(true);
     if (BATTLE.auto) {
-      $("#battle-foot").textContent = "自动作战中 —— " + BATTLE.p1.g.name;
-      BATTLE._autoTimer = setTimeout(() => maybeAutoPlay(), 520 / BATTLE.speed);
+      $("#battle-foot").textContent = (BATTLE.spectate ? "阵营观战中 ⚔ " : "自动作战中 —— ") + BATTLE.p1.g.name;
+      const tok = BATTLE.token;
+      BATTLE._autoTimer = setTimeout(() => { if (BATTLE && BATTLE.token === tok) maybeAutoPlay(); }, 520 / BATTLE.speed);
     } else {
       $("#battle-foot").textContent = "选择你的打法 —— " + BATTLE.p1.g.name;
     }
@@ -685,7 +702,7 @@
     BATTLE.busy = false; // 战斗结束解除锁定，避免阻塞返回等操作
     const winner = BATTLE.p1.hp > 0 ? BATTLE.p1.g : BATTLE.p2.g;
     const loser = winner === BATTLE.p1.g ? BATTLE.p2.g : BATTLE.p1.g;
-    AudioSystem.sfx.victory();
+    if (!BATTLE.spectate) AudioSystem.sfx.victory();   // 阵营观战由 War 统一收尾，避免逐场喧闹
     if (BATTLE.rpg) { RPG.onBattleEnd(BATTLE.p1.hp > 0, BATTLE.opp); return; }
     if (BATTLE.onWin) { BATTLE.onWin(winner, loser); return; }
 
@@ -793,10 +810,16 @@
       $("#war-mode-fast").classList.toggle("active", m === "fast");
       $("#war-mode-detail").classList.toggle("active", m === "detail");
       if (m === "fast") $("#war-duel").innerHTML = "";
+      if (!this.running) {
+        $("#war-status").textContent = m === "detail"
+          ? "详情模式：每一阵都将进入经典单挑画面亲历厮杀（可调速/中途返回）"
+          : "点击「开战」，让两军百将随机捉对厮杀";
+      }
     },
     async start(hero) {
       if (this.running) return;
       this.running = true;
+      this.aborted = false;
       $("#war-start").disabled = true;
       $("#war-log").innerHTML = "";
       $("#war-duel").innerHTML = "";
@@ -819,24 +842,23 @@
       let cnIdx = 0, jpIdx = 0;
       let cnFighter = cn[cnIdx], jpFighter = jp[jpIdx];
       let battleNo = 0;
-      while (cnIdx < cn.length && jpIdx < jp.length) {
+      while (!this.aborted && cnIdx < cn.length && jpIdx < jp.length) {
         battleNo++;
-        const res = autoBattle(cnFighter, jpFighter);
+
+        // 详情模式：切到经典单挑画面，自动演完整场；快捷模式：直接结算
+        let res;
+        if (this.mode === "detail") {
+          res = await autoPlayBattle(cnFighter, jpFighter, {
+            title: `阵营大战 · 第 ${battleNo} 阵`,
+            intro: `${cnFighter.name}（${sideName(cnFighter.side)}） 对阵 ${jpFighter.name}（${sideName(jpFighter.side)}）`,
+          });
+          if (this.aborted) return;
+        } else {
+          res = autoBattle(cnFighter, jpFighter);
+        }
         const winSide = res.winner.side;
         bump(res.winner);  // res.winner 即 cnFighter 或 jpFighter 本身
         if (hero && res.winner.id === -1) heroKills++;
-
-        // 详情模式：逐回合演示这场厮杀
-        if (this.mode === "detail") {
-          const a = cnFighter, b = jpFighter;
-          for (let s = 0; s < res.hpSeq.length; s++) {
-            if (this.mode !== "detail") break;
-            this.renderDuel(a, b, res.hpSeq[s][0], res.hpSeq[s][1], s === res.hpSeq.length - 1 ? res.winner : null);
-            if (s > 0) AudioSystem.sfx.hit();
-            await sleep(s === 0 ? 260 : 300);
-          }
-          await sleep(260);
-        }
 
         const wlog = $("#war-log");
         const ln = document.createElement("div");
@@ -853,9 +875,11 @@
         $("#war-cn").textContent = cn.length - cnIdx;
         $("#war-jp").textContent = jp.length - jpIdx;
         if (this.mode !== "detail") AudioSystem.sfx.hit();
-        await sleep(this.mode === "detail" ? 60 : (hero ? 90 : 140));
+        await sleep(this.mode === "detail" ? 220 : (hero ? 90 : 140));
       }
+      if (this.aborted) { this.running = false; $("#war-start").disabled = false; return; }
       $("#war-duel").innerHTML = "";
+      if (this.mode === "detail") showScreen("war");   // 详情打完回到战报界面再公布战果
       const cnWin = cnIdx < cn.length;
       $("#war-status").textContent = cnWin ? "🐲 三国 全军获胜！" : "🏯 战国 全军获胜！";
       AudioSystem.sfx.victory();
@@ -877,25 +901,6 @@
       $("#war-again").onclick = () => { closeOverlay(); this.start(); };
       $("#war-home").onclick = () => { closeOverlay(); showScreen("home"); };
     },
-    // 详情观战：单场厮杀的双方体力演示
-    renderDuel(a, b, hpA, hpB, winner) {
-      const pa = Math.max(0, Math.round(hpA / a.ti * 100)), pb = Math.max(0, Math.round(hpB / b.ti * 100));
-      const nm = g => (g.id === -1 ? "★" : "") + g.name;
-      const wa = winner && winner === a ? "win" : (winner ? "lose" : "");
-      const wb = winner && winner === b ? "win" : (winner ? "lose" : "");
-      $("#war-duel").innerHTML = `
-        <div class="wd-side ${a.side}">
-          <div class="wd-name ${wa}">${nm(a)}</div>
-          <div class="wd-hpbar"><span class="wd-fill" style="width:${pa}%"></span></div>
-          <div class="wd-hp">${Math.max(0, Math.round(hpA))}</div>
-        </div>
-        <div class="wd-vs">${winner ? '✓' : '⚔'}</div>
-        <div class="wd-side ${b.side} right">
-          <div class="wd-name ${wb}">${nm(b)}</div>
-          <div class="wd-hpbar"><span class="wd-fill" style="width:${pb}%"></span></div>
-          <div class="wd-hp">${Math.max(0, Math.round(hpB))}</div>
-        </div>`;
-    },
     // 击杀数排行榜（取前 8）
     renderRank(kills) {
       const top = [...kills.values()].sort((a, b) => b.kills - a.kills).slice(0, 8);
@@ -913,6 +918,7 @@
   };
   function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } }
   function pad(n) { return ("#" + n).padEnd(4, " "); }
+  function sideName(side) { return side === "cn" ? "三国" : "战国"; }
 
   /* ============================================================
    *  数据库管理界面
@@ -1581,8 +1587,9 @@
 
     // 返回（仅在战斗进行中且正处于战斗画面时才阻止）
     $$("[data-back]").forEach(b => b.onclick = () => {
-      if (BATTLE && BATTLE.busy && $("#screen-battle").classList.contains("active")) return;
+      if (BATTLE && BATTLE.busy && !BATTLE.spectate && $("#screen-battle").classList.contains("active")) return;
       if (BATTLE) BATTLE.busy = false;
+      War.aborted = true; War.running = false;   // 终止可能在进行中的阵营大战
       closeOverlay();
       showScreen("home");
     });
