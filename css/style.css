@@ -179,36 +179,38 @@ html, body {
     radial-gradient(ellipse at center 30%, rgba(212,175,55,.08), transparent 60%),
     repeating-linear-gradient(90deg, transparent, transparent 38px, rgba(0,0,0,.12) 39px, transparent 40px);
 }
-.fighters { display: flex; padding: 14px 12px 6px; gap: 8px; }
+.fighters { display: flex; padding: 8px 12px 4px; gap: 10px; }
 .fighter { flex: 1; min-width: 0; }
-.fighter .fhead { display: flex; align-items: center; gap: 8px; }
+.fighter .fhead { display: flex; align-items: flex-start; gap: 8px; }
 .fighter.right .fhead { flex-direction: row-reverse; text-align: right; }
 .fighter .favatar {
-  width: 50px; height: 50px; border-radius: 50%; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 900; color: #fff;
+  width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 21px; font-weight: 900; color: #fff;
   border: 2px solid var(--cn-gold);
 }
 .fighter.cn .favatar { background: linear-gradient(135deg, var(--cn-red), #7a1420); }
 .fighter.jp .favatar { background: linear-gradient(135deg, var(--jp-indigo), #141e3c); }
-.fighter .finfo { min-width: 0; }
-.fighter .fname { font-size: 18px; font-weight: 700; color: var(--cn-gold); line-height: 1.15; }
-.fighter .ftitle { font-size: 11px; color: #c9b890; opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fighter .ftotal { font-size: 12px; color: #c9b890; margin-top: 1px; }
-.fighter .ftotal b { color: var(--cn-gold); font-size: 15px; font-family: "DotGothic16", monospace; }
-/* 姓名旁的五维彩条 */
-.fstats { margin-top: 7px; display: flex; flex-direction: column; gap: 3px; }
-.fs-row { display: flex; align-items: center; gap: 5px; }
+.fighter .finfo { flex: 1; min-width: 0; }
+.fnameline { display: flex; align-items: baseline; gap: 6px; }
+.fighter.right .fnameline { flex-direction: row-reverse; }
+.fighter .fname { font-size: 17px; font-weight: 700; color: var(--cn-gold); line-height: 1.1;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fighter .ftotal { font-size: 11px; color: #c9b890; flex-shrink: 0; }
+.fighter .ftotal b { color: var(--cn-gold); font-size: 14px; font-family: "DotGothic16", monospace; }
+.fighter .ftitle { font-size: 10px; color: #c9b890; opacity: .8; line-height: 1.2;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 姓名旁的五维紧凑彩条：两列网格，整体更矮 */
+.fstats { margin-top: 4px; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+.fs-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .fighter.right .fs-row { flex-direction: row-reverse; }
-.fs-lbl { font-size: 12px; color: #c9b890; width: 14px; flex-shrink: 0; text-align: center; }
-.fs-track { flex: 1; height: 8px; min-width: 0; border-radius: 4px; background: rgba(0,0,0,.45); overflow: hidden; }
-.fs-bar { display: block; height: 100%; border-radius: 4px; }
+.fs-lbl { font-size: 10px; color: #c9b890; width: 11px; flex-shrink: 0; text-align: center; }
+.fs-track { flex: 1; height: 5px; min-width: 0; border-radius: 3px; background: rgba(0,0,0,.45); overflow: hidden; }
+.fs-bar { display: block; height: 100%; border-radius: 3px; }
 .fighter.right .fs-bar { margin-left: auto; }
-.fs-val { font-size: 12px; font-weight: 700; color: #d8c79c; width: 26px; flex-shrink: 0;
+.fs-val { font-size: 10px; font-weight: 700; color: #d8c79c; width: 20px; flex-shrink: 0;
   font-family: "DotGothic16", monospace; text-align: right; }
 .fighter.right .fs-val { text-align: left; }
-.hp-lbl { font-size: 11px; color: #c9b890; margin-bottom: 2px; }
-.fighter.right .hp-lbl { text-align: right; }
-.hpbar-wrap { margin-top: 8px; }
+.hpbar-wrap { margin-top: 6px; }
 .hpbar {
   height: 16px; border-radius: 8px; background: rgba(0,0,0,.5); overflow: hidden;
   border: 1px solid rgba(212,175,55,.4); position: relative;
@@ -256,7 +258,7 @@ html, body {
 
 /* 战斗动画区 —— 8-bit 像素骑战画面 */
 .stage {
-  flex: 1; min-height: 150px; position: relative; display: flex;
+  flex: 1; min-height: 116px; position: relative; display: flex;
   align-items: stretch; justify-content: center; overflow: hidden;
   border-top: 3px solid #0a0805; border-bottom: 3px solid #0a0805;
 }
@@ -317,6 +319,7 @@ html, body {
 .tactic-btn .ti { font-size: 22px; display: block; }
 .tactic-btn .tn { font-size: 15px; font-weight: 700; margin-top: 2px; }
 .tactic-btn:active { transform: scale(.92); background: rgba(212,175,55,.4); }
+.tactic-btn.chosen { outline: 2px solid #5bd66a; background: rgba(91,214,106,.32); }
 .tactic-btn:disabled { opacity: .35; }
 .tactic-btn .stcost { font-size: 11px; color: #4fc3f7; }
 
