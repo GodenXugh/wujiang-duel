@@ -573,7 +573,6 @@
     logLine(`【${BATTLE.p1.g.name}】 对阵 【${BATTLE.p2.g.name}】，单挑开始！`, "sys");
     logLine(`体力=血量 武力=攻 智力=智谋 统帅=先手/减伤 政治=战意 魅力=会心/卸力`, "sys");
     BATTLE.busy = false;
-    BATTLE.round = 0;
     BATTLE.token = ++battleToken;
     BATTLE.speed = PREF.speed;
     BATTLE.auto = BATTLE.spectate ? true : PREF.auto;   // 阵营观战恒为自动
@@ -585,42 +584,51 @@
       };
     });
     syncBattleControls();
-    nextRoundPrompt();
+    BATTLE.turnNo = 0;
+    BATTLE.turn = firstMover(BATTLE.p1, BATTLE.p2);   // 统帅决定先手
+    nextTurn();
     showScreen("battle");
   }
 
-  function nextRoundPrompt() {
-    BATTLE.round++;
-    BATTLE.freeChoice = null;             // 新回合清空已备计策
-    $("#round-badge").textContent = `第 ${BATTLE.round} 回合`;
-    // 我方被束缚：本回合自动跳过
-    if (!BATTLE.spectate && BATTLE.p1.bound > 0) {
-      renderTactics(false);
-      $("#battle-foot").textContent = `${BATTLE.p1.g.name} 被束缚，无法行动…`;
-      const tok = BATTLE.token;
-      BATTLE._autoTimer = setTimeout(() => { if (BATTLE && BATTLE.token === tok) doRound({ free: null, main: "normal" }); }, 780 / BATTLE.speed);
+  // 轮换出招：决定/提示当前回合该谁出手
+  function nextTurn() {
+    BATTLE.freeChoice = null;
+    const active = BATTLE.turn;
+    const me = active === "p1" ? BATTLE.p1 : BATTLE.p2;
+    const foe = active === "p1" ? BATTLE.p2 : BATTLE.p1;
+    const human = active === "p1" && !BATTLE.auto && !BATTLE.spectate;
+    if (human && me.bound <= 0) {
+      renderTactics(true);
+      $("#battle-foot").textContent = "请出招 —— " + me.g.name;
       return;
     }
-    renderTactics(true);
-    if (BATTLE.auto) {
-      $("#battle-foot").textContent = (BATTLE.spectate ? "阵营观战中 ⚔ " : "自动作战中 —— ") + BATTLE.p1.g.name;
-      const tok = BATTLE.token;
-      BATTLE._autoTimer = setTimeout(() => { if (BATTLE && BATTLE.token === tok) maybeAutoPlay(); }, 520 / BATTLE.speed);
-    } else {
-      $("#battle-foot").textContent = "选择你的打法 —— " + BATTLE.p1.g.name;
-    }
+    // 自动出手：对手回合、自动作战、观战、或被束缚（自动跳过）
+    renderTactics(false);
+    $("#battle-foot").textContent = me.bound > 0
+      ? `${me.g.name} 被束缚，暂停出招…`
+      : (BATTLE.spectate ? "阵营观战中 ⚔ " : (human ? "" : (active === "p1" ? "自动作战 —— " : "对手出招 —— "))) + me.g.name;
+    const tok = BATTLE.token;
+    BATTLE._autoTimer = setTimeout(() => {
+      if (!BATTLE || BATTLE.token !== tok) return;
+      const a = BATTLE.turn === "p1" ? BATTLE.p1 : BATTLE.p2;
+      const f = BATTLE.turn === "p1" ? BATTLE.p2 : BATTLE.p1;
+      takeTurn(aiChoosePlan(a, f));
+    }, 560 / BATTLE.speed);
   }
 
+  // 自动作战开关触发：若轮到我方且可行动则立即自动出手
   function maybeAutoPlay() {
     if (!BATTLE || BATTLE.busy || !BATTLE.auto) return;
     if (overlay.classList.contains("show")) return;
-    doRound(aiChoosePlan(BATTLE.p1, BATTLE.p2));
+    const a = BATTLE.turn === "p1" ? BATTLE.p1 : BATTLE.p2;
+    const f = BATTLE.turn === "p1" ? BATTLE.p2 : BATTLE.p1;
+    takeTurn(aiChoosePlan(a, f));
   }
 
   // 手动：点免费计策(束缚/弱化)——记下本回合计策，不结算回合，仍可再出招
   function chooseFree(key) {
     if (!BATTLE || BATTLE.busy || BATTLE.spectate) return;
-    if (BATTLE.p1.bound > 0) return;
+    if (BATTLE.turn !== "p1" || BATTLE.p1.bound > 0) return;
     if (BATTLE.freeChoice) return;                 // 每回合限一计
     const cost = staminaCost(key, BATTLE.p1.g);
     if (BATTLE.p1.stam < cost) { toast("战意不足"); return; }
@@ -630,13 +638,13 @@
     $("#battle-foot").textContent = `已备【${TACTICS[key].name}】，请再选择出招`;
   }
 
-  // 玩家选定「主行动」后结算整回合（携带已选的免费计策）
+  // 玩家选定「主行动」后结算本回合（携带已选的免费计策）
   function playerTactic(mainKey) {
-    doRound({ free: BATTLE.freeChoice, main: mainKey });
+    takeTurn({ free: BATTLE.freeChoice, main: mainKey });
   }
 
-  // 结算一整回合：p1Plan 为我方计划，对手由 AI 决策
-  async function doRound(p1Plan) {
+  // 结算「当前出手方」的一个回合
+  async function takeTurn(plan) {
     if (!BATTLE || BATTLE.busy) return;
     const myTok = BATTLE.token;           // 该回合所属战斗；战斗被替换则中途作废
     const stale = () => !BATTLE || BATTLE.token !== myTok;
@@ -645,11 +653,13 @@
     clearTimeout(BATTLE._autoTimer);
     renderTactics(false);
 
-    const p2Plan = aiChoosePlan(BATTLE.p2, BATTLE.p1);
-    const planName = p => (p.free ? `【${TACTICS[p.free].name}】+` : "") + `【${TACTICS[p.main].name}】`;
-    $("#battle-foot").textContent = `${BATTLE.p1.g.name}${planName(p1Plan)} ⚔ ${BATTLE.p2.g.name}${planName(p2Plan)}`;
+    BATTLE.turnNo = (BATTLE.turnNo || 0) + 1;
+    $("#round-badge").textContent = `第 ${Math.ceil(BATTLE.turnNo / 2)} 回合`;
 
-    const events = resolveRound(BATTLE.p1, BATTLE.p2, p1Plan, p2Plan);
+    const active = BATTLE.turn;
+    const me = active === "p1" ? BATTLE.p1 : BATTLE.p2;
+    const foe = active === "p1" ? BATTLE.p2 : BATTLE.p1;
+    const events = resolveTurn(me, foe, plan, active);
 
     for (const ev of events) {
       await applyEvent(ev);
@@ -665,9 +675,10 @@
       return;
     }
     BATTLE.busy = false;
-    await battleSleep(200);
+    BATTLE.turn = active === "p1" ? "p2" : "p1";   // 轮换出手
+    await battleSleep(220);
     if (stale()) return;
-    nextRoundPrompt();
+    nextTurn();
   }
 
   async function applyEvent(ev) {
@@ -891,12 +902,13 @@
       $("#war-duel").innerHTML = "";
       showScreen("war");
       $("#war-status").textContent = "已返回战报，阵营大战继续进行中…（点「详情」可重新进入观战）";
-      // 立即从当前状态续算完这场对决，并交给等待中的循环，使大战无缝继续
+      // 立即从当前状态续算完这场对决（沿用轮换出招），并交给等待中的循环，使大战无缝继续
       const p1 = BATTLE.p1, p2 = BATTLE.p2;
-      let guard = 0;
-      while (p1.hp > 0 && p2.hp > 0 && guard++ < 300) {
-        BATTLE.round++;
-        resolveRound(p1, p2, aiChoosePlan(p1, p2), aiChoosePlan(p2, p1));
+      let turn = BATTLE.turn || firstMover(p1, p2), guard = 0;
+      while (p1.hp > 0 && p2.hp > 0 && guard++ < 400) {
+        const me = turn === "p1" ? p1 : p2, foe = turn === "p1" ? p2 : p1;
+        resolveTurn(me, foe, aiChoosePlan(me, foe), turn);
+        turn = turn === "p1" ? "p2" : "p1";
       }
       BATTLE.token = ++battleToken;     // 作废在飞的回合动画，避免污染后续
       BATTLE.busy = false;
@@ -1740,7 +1752,11 @@
       if (!BATTLE) return;
       PREF.auto = BATTLE.auto = !BATTLE.auto;
       syncBattleControls();
-      if (BATTLE.auto && !BATTLE.busy && !overlay.classList.contains("show")) maybeAutoPlay();
+      // 重新决定当前回合：自动→立即排程出手；手动→等待玩家
+      if (!BATTLE.spectate && !BATTLE.busy && !overlay.classList.contains("show")) {
+        clearTimeout(BATTLE._autoTimer);
+        nextTurn();
+      }
     };
     $("#btn-speed").onclick = () => {
       const seq = [1, 2, 4];
