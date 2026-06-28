@@ -5,9 +5,9 @@
  * ============================================================ */
 
 const TACTICS = {
-  fierce:  { key: "fierce",  name: "猛攻", icon: "⚔️", desc: "全力进攻，伤害高、消耗大，被「格挡」克制",   stam: 14, type: "atk" },
+  fierce:  { key: "fierce",  name: "猛攻", icon: "⚔️", desc: "全力进攻，伤害高、战意消耗大",               stam: 20, type: "atk" },
   normal:  { key: "normal",  name: "普攻", icon: "🗡️", desc: "稳健出招，攻守平衡，伤害低于猛攻",           stam: 8,  type: "atk" },
-  defend:  { key: "defend",  name: "格挡", icon: "🛡️", desc: "防御反击，克制「猛攻」，对「智谋」乏力",     stam: 5,  type: "atk" },
+  defend:  { key: "defend",  name: "格挡", icon: "🛡️", desc: "凝神防御（不耗战意、不攻击）：大幅减免下一次受到的伤害", stam: 0,  type: "guard" },
   strategy:{ key: "strategy",name: "智谋", icon: "🧠", desc: "以智取胜（智力伤害），克制「格挡」，受「猛攻」压制", stam: 7, type: "atk" },
   // —— 计策（智力系）：成功率与效果均取决于双方「智力」 ——
   // 束缚 / 弱化为「计策(免费)」：发动后不占用本回合行动，仍可再出招，但每回合只能发动一个
@@ -104,7 +104,7 @@ function applyScheme(o, scheme, ok) {
     // 蓄力计策：成功则恢复战意并蓄势（成效随智力）
     if (!ok) return { who: o.label, type: "scheme", scheme, ok: false, attacker: an,
       text: `${an} 试图凝气蓄力，却心绪难平，未能成势。` };
-    const gain = Math.round(16 + a.g.zhi * 0.3);
+    const gain = Math.round(6 + a.g.zhi * 0.12);   // 回复量较此前砍半以上
     a.stam = Math.min(100, a.stam + gain);
     a.charged = true;
     return { who: o.label, type: "charge", scheme, ok: true, attacker: an, gain,
@@ -174,6 +174,7 @@ function makeFighter(general) {
     atkMul: 1,       // 攻击力倍率（被「弱化」时 <1）
     atkMulT: 0,      // 弱化的剩余回合
     stance: "normal",// 最近一次的攻击姿态，作为对手下次攻击的相克对象
+    guard: false,    // 格挡：为真时下一次受击大幅减伤
   };
 }
 
@@ -230,7 +231,13 @@ function resolveTurn(attacker, defender, plan, who) {
   // 主行动
   const mk = plan.main || "normal";
   const tac = TACTICS[mk] || TACTICS.normal;
-  if (tac.type === "scheme") {
+  if (tac.type === "guard") {
+    // 格挡：不攻击、不耗战意，进入防御姿态，大幅减免下一次受击（仅凭 guard，不叠相克）
+    attacker.guard = true;
+    attacker.stance = "normal";
+    events.push({ who, type: "defend", attacker: attacker.g.name,
+      text: `${attacker.g.name} 凝神格挡，下一次受击将大幅减伤！` });
+  } else if (tac.type === "scheme") {
     // 占用行动的计策：蓄力(charge) / 疗伤(heal)；蓄力恢复战意故不扣战意
     if (mk !== "charge") { attacker.stam = Math.max(0, attacker.stam - staminaCost(mk, attacker.g)); }
     attacker.stance = "normal";   // 用计姿态门户大开
@@ -241,13 +248,17 @@ function resolveTurn(attacker, defender, plan, who) {
     const wasCharged = attacker.charged; attacker.charged = false;
     // 相克对象取守方最近一次姿态
     const res = computeDamage(attacker, defender, mk, defender.stance || "normal", wasCharged);
+    // 守方处于格挡：大幅减伤并消耗格挡
+    if (defender.guard) { res.dmg = Math.max(1, Math.round(res.dmg * 0.3)); res.guarded = true; defender.guard = false; }
     defender.hp = Math.max(0, defender.hp - res.dmg);
     attacker.stance = mk;
+    let text = buildHitText(attacker.g.name, defender.g.name, mk, res, wasCharged);
+    if (res.guarded) text += "（被格挡卸去大半）";
     events.push({
-      who, type: "hit", dmg: res.dmg, crit: res.crit, evaded: res.evaded,
+      who, type: "hit", dmg: res.dmg, crit: res.crit, evaded: res.evaded, guarded: res.guarded,
       counter: res.counter, charged: wasCharged, tactic: mk,
       attacker: attacker.g.name, defender: defender.g.name, defHp: defender.hp, defMax: defender.maxHp,
-      text: buildHitText(attacker.g.name, defender.g.name, mk, res, wasCharged),
+      text,
     });
     if (defender.hp <= 0) {
       events.push({ who, type: "ko", winner: attacker.g.name, loser: defender.g.name,
@@ -258,9 +269,11 @@ function resolveTurn(attacker, defender, plan, who) {
   return events;
 }
 
-// 「政治」→ 出招战意消耗（高政治更省力）
+// 「政治」→ 出招战意消耗（政治越高，每招消耗越少，最多省约 1/3）
 function staminaCost(tactic, g) {
-  return Math.max(2, Math.round(TACTICS[tactic].stam * (1 - (g.zheng || 0) / 380)));
+  const base = TACTICS[tactic].stam || 0;
+  if (base <= 0) return 0;
+  return Math.max(2, Math.round(base * (1 - Math.min(0.34, (g.zheng || 0) / 300))));
 }
 // 「政治」→ 每回合战意恢复
 function staminaRegen(g) { return 2 + (g.zheng || 0) / 22; }

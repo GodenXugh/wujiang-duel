@@ -204,9 +204,10 @@ html, body {
   margin-top: 3px; text-align: center; width: 100%; word-break: break-word; }
 .fighter .ftitle { font-size: 10px; color: #c9b890; opacity: .8; line-height: 1.2; text-align: center;
   width: 100%; word-break: break-word; }
-/* 五维区整体收窄，字号加大；总评移到姓名下方 */
+/* 五维区整体收窄，字号加大 */
 .fstats-wrap { flex: 1; min-width: 0; }
-.fighter .ftotal { font-size: 12px; color: #c9b890; text-align: center; margin-top: 3px; width: 100%; }
+/* 总评：放在五维/姓名区与体力条之间，紧贴体力条上方 */
+.fighter .ftotal { font-size: 12px; color: #c9b890; text-align: center; margin-top: 5px; width: 100%; }
 .fighter .ftotal b { color: var(--cn-gold); font-size: 15px; font-family: "DotGothic16", monospace; }
 /* 五维：评级 + 数值彩条 + 数值，逐行排列 */
 .fstats { display: flex; flex-direction: column; gap: 3px; }
@@ -220,8 +221,7 @@ html, body {
   font-family: "DotGothic16", monospace; text-align: right; }
 .fighter.right .fs-val { text-align: left; }
 .fs-row .g { min-width: 20px; font-size: 11px; padding: 1px 3px; }
-/* 体力条上方留出一点空隙 */
-.hpbar-wrap { margin-top: 12px; }
+.hpbar-wrap { margin-top: 3px; }
 .hpbar {
   height: 16px; border-radius: 8px; background: rgba(0,0,0,.5); overflow: hidden;
   border: 1px solid rgba(212,175,55,.4); position: relative;
