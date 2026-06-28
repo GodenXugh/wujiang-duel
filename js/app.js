@@ -821,11 +821,22 @@
       $("#war-start").disabled = false;
       if (BATTLE && BATTLE.spectate) { BATTLE.busy = false; if (BATTLE.abortResolve) BATTLE.abortResolve(); }
     },
-    // 详情观战中点返回：脱离单挑画面，但本场大战在战报界面继续（其余各阵改为快捷推进）
+    // 同步模式开关高亮
+    syncModeBtns() {
+      $("#war-mode-fast").classList.toggle("active", this.mode === "fast");
+      $("#war-mode-detail").classList.toggle("active", this.mode === "detail");
+    },
+    // 详情观战中点返回：脱离单挑画面，回到战报界面，本场大战继续（其余各阵快捷推进）
     detach() {
       if (!BATTLE || !BATTLE.spectate || BATTLE._detached) return;
       BATTLE._detached = true;
       this.detached = true;
+      // 脱离后按钮切回「快捷」，回到战报界面
+      this.mode = "fast";
+      this.syncModeBtns();
+      $("#war-duel").innerHTML = "";
+      showScreen("war");
+      $("#war-status").textContent = "已返回战报，阵营大战继续进行中…（点「详情」可重新进入观战）";
       // 立即从当前状态续算完这场对决，并交给等待中的循环，使大战无缝继续
       const p1 = BATTLE.p1, p2 = BATTLE.p2;
       let guard = 0;
@@ -841,15 +852,29 @@
       if (BATTLE.onWin) BATTLE.onWin(winner, loser);
     },
     setMode(m) {
-      this.mode = m;
-      $("#war-mode-fast").classList.toggle("active", m === "fast");
-      $("#war-mode-detail").classList.toggle("active", m === "detail");
-      if (m === "fast") $("#war-duel").innerHTML = "";
-      if (!this.running) {
-        $("#war-status").textContent = m === "detail"
-          ? "详情模式：每一阵都将进入经典单挑画面亲历厮杀（可调速/中途返回）"
-          : "点击「开战」，让两军百将随机捉对厮杀";
+      // 大战进行中：模式开关变为「观战 / 只看战报」的实时切换
+      if (this.running) {
+        if (m === "detail") {
+          this.mode = "detail";
+          this.detached = false;            // 下一阵起重新进入单挑画面观战
+          this.syncModeBtns();
+          $("#war-status").textContent = "下一阵将进入经典单挑画面继续观战…";
+        } else {
+          // 切到快捷：若正在单挑画面观战则脱离回战报，否则仅标记
+          if (BATTLE && BATTLE.spectate && !BATTLE._detached) { this.detach(); return; }
+          this.mode = "fast";
+          this.detached = true;
+          this.syncModeBtns();
+          $("#war-duel").innerHTML = "";
+        }
+        return;
       }
+      this.mode = m;
+      this.syncModeBtns();
+      if (m === "fast") $("#war-duel").innerHTML = "";
+      $("#war-status").textContent = m === "detail"
+        ? "详情模式：每一阵都将进入经典单挑画面亲历厮杀（可调速/中途返回）"
+        : "点击「开战」，让两军百将随机捉对厮杀";
     },
     async start(hero) {
       if (this.running) return;
@@ -1634,10 +1659,8 @@
       const onBattle = $("#screen-battle").classList.contains("active");
       // 阵营大战详情观战：脱离单挑画面退回战报界面，但本场大战继续推进（非中止）
       if (onBattle && BATTLE && BATTLE.spectate) {
-        War.detach();
         closeOverlay();
-        showScreen("war");
-        $("#war-status").textContent = "已返回战报，阵营大战继续进行中…";
+        War.detach();   // 内部已切回战报界面、切到「快捷」并续算当前阵
         return;
       }
       if (BATTLE && BATTLE.busy && onBattle) return;
