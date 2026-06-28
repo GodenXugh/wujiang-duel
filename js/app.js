@@ -516,17 +516,18 @@
     wrap.innerHTML = Object.values(TACTICS).map(t => {
       const cost = staminaCost(t.key, g);
       const chosen = BATTLE.freeChoice === t.key ? " chosen" : "";
+      const costLbl = t.key === "charge" ? `<span class="stcost gain">回战意</span>` : `<span class="stcost">耗${cost}</span>`;
       return `<button class="tactic-btn ${t.type === "scheme" ? "scheme" : ""}${t.free ? " free" : ""}${chosen}" data-t="${t.key}" title="${t.desc}">
         <span class="ti">${t.icon}</span><span class="tn">${t.name}</span>
-        <span class="stcost">耗${cost}</span>
+        ${costLbl}
       </button>`;
     }).join("");
     $$(".tactic-btn", wrap).forEach(b => {
       const key = b.dataset.t;
       const t = TACTICS[key];
       const cost = staminaCost(key, g);
-      // 免费计策：已用过一计则禁用其余计策；其余为主行动
-      let dis = !enabled || BATTLE.spectate || BATTLE.p1.stam < cost;
+      // 蓄力用于恢复战意，永不因战意不足而禁用；其余按战意消耗判定
+      let dis = !enabled || BATTLE.spectate || (key !== "charge" && BATTLE.p1.stam < cost);
       if (t.free && freeUsed) dis = true;
       b.disabled = dis;
       b.onclick = () => (t.free ? chooseFree(key) : playerTactic(key));
@@ -677,6 +678,9 @@
       AudioSystem.sfx.charge();
       Duel.setCharge(atk, true);
       logLine(ev.text, cls);
+      // 蓄力恢复战意：刷新双方血条/战意条
+      updateBars($("#f-left"), BATTLE.p1);
+      updateBars($("#f-right"), BATTLE.p2);
       await battleSleep(380);
       return;
     }

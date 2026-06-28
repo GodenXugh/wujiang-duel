@@ -191,34 +191,36 @@ html, body {
 /* 上部：左=头像+姓名+简介(竖排)；右=总评+五维。右侧武将整体镜像 */
 .ftop { display: flex; align-items: flex-start; gap: 8px; }
 .fighter.right .ftop { flex-direction: row-reverse; }
-.fid { display: flex; flex-direction: column; align-items: center; width: 52px; flex-shrink: 0; }
+/* 头像+姓名列加宽，给姓名/头像更多空间 */
+.fid { display: flex; flex-direction: column; align-items: center; width: 66px; flex-shrink: 0; }
 .fighter .favatar {
-  width: 44px; height: 44px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; color: #fff;
+  width: 46px; height: 46px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: 23px; font-weight: 900; color: #fff;
   border: 2px solid var(--cn-gold);
 }
 .fighter.cn .favatar { background: linear-gradient(135deg, var(--cn-red), #7a1420); }
 .fighter.jp .favatar { background: linear-gradient(135deg, var(--jp-indigo), #141e3c); }
-.fighter .fname { font-size: 14px; font-weight: 700; color: var(--cn-gold); line-height: 1.15;
+.fighter .fname { font-size: 16px; font-weight: 700; color: var(--cn-gold); line-height: 1.15;
   margin-top: 3px; text-align: center; width: 100%; word-break: break-word; }
-.fighter .ftitle { font-size: 9px; color: #c9b890; opacity: .8; line-height: 1.2; text-align: center;
+.fighter .ftitle { font-size: 10px; color: #c9b890; opacity: .8; line-height: 1.2; text-align: center;
   width: 100%; word-break: break-word; }
+/* 五维区整体收窄，字号加大 */
 .fstats-wrap { flex: 1; min-width: 0; }
-.fighter .ftotal { font-size: 11px; color: #c9b890; margin-bottom: 2px; }
+.fighter .ftotal { font-size: 12px; color: #c9b890; margin-bottom: 2px; }
 .fighter.right .ftotal { text-align: right; }
-.fighter .ftotal b { color: var(--cn-gold); font-size: 14px; font-family: "DotGothic16", monospace; }
+.fighter .ftotal b { color: var(--cn-gold); font-size: 15px; font-family: "DotGothic16", monospace; }
 /* 五维：评级 + 数值彩条 + 数值，逐行排列 */
-.fstats { display: flex; flex-direction: column; gap: 2px; }
+.fstats { display: flex; flex-direction: column; gap: 3px; }
 .fs-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .fighter.right .fs-row { flex-direction: row-reverse; }
-.fs-lbl { font-size: 10px; color: #c9b890; width: 11px; flex-shrink: 0; text-align: center; }
-.fs-track { flex: 1; height: 6px; min-width: 0; border-radius: 3px; background: rgba(0,0,0,.45); overflow: hidden; }
+.fs-lbl { font-size: 13px; color: #c9b890; width: 15px; flex-shrink: 0; text-align: center; }
+.fs-track { flex: 1; height: 7px; min-width: 14px; border-radius: 3px; background: rgba(0,0,0,.45); overflow: hidden; }
 .fs-bar { display: block; height: 100%; border-radius: 3px; }
 .fighter.right .fs-bar { margin-left: auto; }
-.fs-val { font-size: 11px; font-weight: 700; color: #d8c79c; width: 22px; flex-shrink: 0;
+.fs-val { font-size: 14px; font-weight: 700; color: #d8c79c; width: 26px; flex-shrink: 0;
   font-family: "DotGothic16", monospace; text-align: right; }
 .fighter.right .fs-val { text-align: left; }
-.fs-row .g { min-width: 18px; font-size: 9px; padding: 0 3px; }
+.fs-row .g { min-width: 20px; font-size: 11px; padding: 1px 3px; }
 .hpbar-wrap { margin-top: 6px; }
 .hpbar {
   height: 16px; border-radius: 8px; background: rgba(0,0,0,.5); overflow: hidden;
@@ -331,6 +333,7 @@ html, body {
 .tactic-btn.chosen { outline: 2px solid #5bd66a; background: rgba(91,214,106,.32); }
 .tactic-btn:disabled { opacity: .35; }
 .tactic-btn .stcost { font-size: 11px; color: #4fc3f7; }
+.tactic-btn .stcost.gain { color: #5bd66a; }
 
 .battle-foot { padding: 9px 14px; text-align: center; color:#c9b890; font-size:16px; }
 
