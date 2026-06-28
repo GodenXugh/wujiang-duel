@@ -79,6 +79,8 @@
       <span class="back" data-back>‹</span>
       <h2 id="battle-title">单挑</h2>
       <div class="audio-btns">
+        <button id="btn-auto" class="ctrl-btn">▶ 自动</button>
+        <button id="btn-speed" class="ctrl-btn">×1</button>
         <button id="btn-music2">♪</button>
         <button id="btn-sfx2">🔊</button>
       </div>
@@ -86,11 +88,14 @@
     <div class="arena" id="arena">
       <div class="fighters">
         <div class="fighter left" id="f-left">
-          <div class="fhead">
-            <div class="favatar" data-info></div>
-            <div class="finfo">
-              <div class="fnameline"><span class="fname"></span><span class="ftotal"></span></div>
+          <div class="ftop">
+            <div class="fid">
+              <div class="favatar" data-info></div>
+              <div class="fname"></div>
               <div class="ftitle"></div>
+            </div>
+            <div class="fstats-wrap">
+              <div class="ftotal"></div>
               <div class="fstats"></div>
             </div>
           </div>
@@ -98,11 +103,14 @@
           <div class="stam-wrap"><div class="stambar"><div class="fill"></div></div></div>
         </div>
         <div class="fighter right" id="f-right">
-          <div class="fhead">
-            <div class="favatar" data-info></div>
-            <div class="finfo">
-              <div class="fnameline"><span class="fname"></span><span class="ftotal"></span></div>
+          <div class="ftop">
+            <div class="fid">
+              <div class="favatar" data-info></div>
+              <div class="fname"></div>
               <div class="ftitle"></div>
+            </div>
+            <div class="fstats-wrap">
+              <div class="ftotal"></div>
               <div class="fstats"></div>
             </div>
           </div>
@@ -116,10 +124,6 @@
         <div class="clash" id="clash"></div>
       </div>
       <div class="battle-log" id="battle-log"></div>
-      <div class="battle-controls">
-        <button id="btn-auto" class="ctrl-btn">▶ 自动作战</button>
-        <button id="btn-speed" class="ctrl-btn">速度 ×1</button>
-      </div>
       <div class="tactics" id="tactics"></div>
       <div class="battle-foot" id="battle-foot">选择你的打法</div>
     </div>

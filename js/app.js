@@ -261,12 +261,12 @@
     $(".favatar", el).textContent = avatarChar(g.name);
     $(".fname", el).textContent = g.name;
     $(".ftitle", el).textContent = g.title || "";
-    $(".ftotal", el).innerHTML = `总<b>${sumStats(g)}</b>`;
-    // 姓名旁的五维紧凑彩条（体力另以下方血条呈现）
+    $(".ftotal", el).innerHTML = `总评 <b>${sumStats(g)}</b>`;
+    // 头像/姓名右侧的五维（评级 + 数值彩条 + 数值；体力另以下方血条呈现）
     $(".fstats", el).innerHTML = DIMS.filter(([k]) => k !== "ti").map(([k, label]) =>
       `<div class="fs-row"><span class="fs-lbl">${label[0]}</span>` +
       `<span class="fs-track"><span class="fs-bar" style="width:${Math.min(100, g[k] / 1.15)}%;background:${gradeColor(g[k])}"></span></span>` +
-      `<span class="fs-val">${g[k]}</span></div>`
+      `<span class="fs-val">${g[k]}</span>${gradeChip(g[k])}</div>`
     ).join("");
     updateBars(el, fighter);
   }
@@ -741,8 +741,8 @@
   function syncBattleControls() {
     const a = $("#btn-auto");
     a.classList.toggle("on", !!BATTLE.auto);
-    a.textContent = BATTLE.auto ? "⏸ 自动中" : "▶ 自动作战";
-    $("#btn-speed").textContent = "速度 ×" + (BATTLE.speed || 1);
+    a.textContent = BATTLE.auto ? "⏸ 自动" : "▶ 自动";
+    $("#btn-speed").textContent = "×" + (BATTLE.speed || 1);
   }
 
   function floatDamage(side, dmg, crit, heal) {
