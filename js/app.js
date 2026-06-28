@@ -549,13 +549,16 @@
   }
 
   // 阵营大战「详情」模式：在经典单挑画面上自动演完整场对决，Promise 返回胜负
+  // 中途中止时以 null 解开等待方（见 War.abort）
   function autoPlayBattle(g1, g2, opts = {}) {
     return new Promise(resolve => {
-      BATTLE = {
+      const b = {
         p1: makeFighter(g1), p2: makeFighter(g2),
         round: 0, mode: "war", busy: false, spectate: true,
-        onWin: (winner, loser) => resolve({ winner, loser, rounds: BATTLE.round }),
+        onWin: (winner, loser) => resolve({ winner, loser, rounds: b.round }),
+        abortResolve: () => resolve(null),
       };
+      BATTLE = b;
       $("#battle-title").textContent = opts.title || "阵营大战 · 单挑";
       enterBattle();
       if (opts.intro) logLine(opts.intro, "sys");
@@ -612,7 +615,9 @@
   }
 
   async function playerTactic(tKey) {
-    if (BATTLE.busy) return;
+    if (!BATTLE || BATTLE.busy) return;
+    const myTok = BATTLE.token;           // 该回合所属战斗；战斗被替换则中途作废
+    const stale = () => !BATTLE || BATTLE.token !== myTok;
     BATTLE.busy = true;
     clearTimeout(BATTLE._autoTimer);
     renderTactics(false);
@@ -625,17 +630,20 @@
 
     for (const ev of events) {
       await applyEvent(ev);
+      if (stale()) return;
     }
     updateBars($("#f-left"), BATTLE.p1);
     updateBars($("#f-right"), BATTLE.p2);
 
     if (BATTLE.p1.hp <= 0 || BATTLE.p2.hp <= 0) {
       await battleSleep(500);
+      if (stale()) return;
       endBattle();
       return;
     }
     BATTLE.busy = false;
     await battleSleep(200);
+    if (stale()) return;
     nextRoundPrompt();
   }
 
@@ -804,7 +812,15 @@
    *  阵营大战（自动模拟 100 vs 100）
    * ============================================================ */
   const War = {
-    running: false, mode: "fast",
+    running: false, mode: "fast", gen: 0,
+    // 中止进行中的大战：作废循环、解开等待的观战对决、复位界面
+    abort() {
+      this.gen++;
+      this.aborted = true;
+      this.running = false;
+      $("#war-start").disabled = false;
+      if (BATTLE && BATTLE.spectate) { BATTLE.busy = false; if (BATTLE.abortResolve) BATTLE.abortResolve(); }
+    },
     setMode(m) {
       this.mode = m;
       $("#war-mode-fast").classList.toggle("active", m === "fast");
@@ -820,6 +836,7 @@
       if (this.running) return;
       this.running = true;
       this.aborted = false;
+      const myGen = ++this.gen;            // 本场大战的代号，被中止/重开后作废旧循环
       $("#war-start").disabled = true;
       $("#war-log").innerHTML = "";
       $("#war-duel").innerHTML = "";
@@ -842,7 +859,7 @@
       let cnIdx = 0, jpIdx = 0;
       let cnFighter = cn[cnIdx], jpFighter = jp[jpIdx];
       let battleNo = 0;
-      while (!this.aborted && cnIdx < cn.length && jpIdx < jp.length) {
+      while (this.gen === myGen && !this.aborted && cnIdx < cn.length && jpIdx < jp.length) {
         battleNo++;
 
         // 详情模式：切到经典单挑画面，自动演完整场；快捷模式：直接结算
@@ -852,7 +869,7 @@
             title: `阵营大战 · 第 ${battleNo} 阵`,
             intro: `${cnFighter.name}（${sideName(cnFighter.side)}） 对阵 ${jpFighter.name}（${sideName(jpFighter.side)}）`,
           });
-          if (this.aborted) return;
+          if (this.gen !== myGen || this.aborted || !res) return;  // 被中止/接管：安静退出
         } else {
           res = autoBattle(cnFighter, jpFighter);
         }
@@ -877,6 +894,7 @@
         if (this.mode !== "detail") AudioSystem.sfx.hit();
         await sleep(this.mode === "detail" ? 220 : (hero ? 90 : 140));
       }
+      if (this.gen !== myGen) return;     // 已被新的大战接管，勿动共享状态
       if (this.aborted) { this.running = false; $("#war-start").disabled = false; return; }
       $("#war-duel").innerHTML = "";
       if (this.mode === "detail") showScreen("war");   // 详情打完回到战报界面再公布战果
@@ -911,8 +929,12 @@
       $("#war-cn").textContent = DB.bySide("cn").length;
       $("#war-jp").textContent = DB.bySide("jp").length;
       $("#war-log").innerHTML = "";
+      $("#war-duel").innerHTML = "";
       $("#war-rank").innerHTML = "";
-      $("#war-status").textContent = "点击「开战」，让两军百将随机捉对厮杀";
+      $("#war-start").disabled = false;   // 确保任何进入路径都可再次开战
+      $("#war-status").textContent = this.mode === "detail"
+        ? "详情模式：每一阵都将进入经典单挑画面亲历厮杀（可调速/中途返回）"
+        : "点击「开战」，让两军百将随机捉对厮杀";
       showScreen("war");
     },
   };
@@ -1587,9 +1609,17 @@
 
     // 返回（仅在战斗进行中且正处于战斗画面时才阻止）
     $$("[data-back]").forEach(b => b.onclick = () => {
-      if (BATTLE && BATTLE.busy && !BATTLE.spectate && $("#screen-battle").classList.contains("active")) return;
+      const onBattle = $("#screen-battle").classList.contains("active");
+      // 阵营大战详情观战：中止本场大战并退回阵营大战界面（而非主菜单）
+      if (onBattle && BATTLE && BATTLE.spectate) {
+        War.abort();
+        closeOverlay();
+        War.open();
+        return;
+      }
+      if (BATTLE && BATTLE.busy && onBattle) return;
       if (BATTLE) BATTLE.busy = false;
-      War.aborted = true; War.running = false;   // 终止可能在进行中的阵营大战
+      War.abort();   // 终止可能在进行中的阵营大战
       closeOverlay();
       showScreen("home");
     });
