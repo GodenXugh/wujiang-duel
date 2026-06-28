@@ -188,8 +188,8 @@ html, body {
 }
 .fighters { display: flex; padding: 8px 10px 4px; gap: 10px; }
 .fighter { flex: 1; min-width: 0; }
-/* 上部：左=头像+姓名+简介(竖排)；右=总评+五维。右侧武将整体镜像 */
-.ftop { display: flex; align-items: flex-start; gap: 8px; }
+/* 上部：左=头像+姓名+总评(竖排)；右=五维。右侧武将整体镜像 */
+.ftop { display: flex; align-items: stretch; gap: 8px; }
 .fighter.right .ftop { flex-direction: row-reverse; }
 /* 头像+姓名列加宽，给姓名/头像更多空间 */
 .fid { display: flex; flex-direction: column; align-items: center; width: 66px; flex-shrink: 0; }
@@ -206,8 +206,8 @@ html, body {
   width: 100%; word-break: break-word; }
 /* 五维区整体收窄，字号加大 */
 .fstats-wrap { flex: 1; min-width: 0; }
-/* 总评：置于姓名下方（头像列内），即五维下部行的一侧、体力条上方 */
-.fighter .ftotal { font-size: 11px; color: #c9b890; text-align: center; margin-top: 5px; width: 100%; white-space: nowrap; line-height: 1.2; }
+/* 总评：置于头像列底部（与「魅力」行齐平），即体力条上方 */
+.fighter .ftotal { font-size: 11px; color: #c9b890; text-align: center; margin-top: auto; padding-top: 4px; width: 100%; white-space: nowrap; line-height: 1.2; }
 .fighter .ftotal b { color: var(--cn-gold); font-size: 14px; font-family: "DotGothic16", monospace; }
 /* 五维：评级 + 数值彩条 + 数值，逐行排列 */
 .fstats { display: flex; flex-direction: column; gap: 3px; }
