@@ -581,6 +581,19 @@ html, body {
 .rpg-exp { position: relative; height: 18px; background: rgba(0,0,0,.5); border-radius: 9px; overflow: hidden; border: 1px solid rgba(212,175,55,.3); }
 .rpg-exp-fill { position: absolute; left: 0; top: 0; height: 100%; background: linear-gradient(90deg,#4fc3f7,#7e57c2); transition: width .4s; }
 .rpg-exp-txt { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; text-shadow: 0 1px 2px #000; font-family: "DotGothic16", monospace; }
+/* 养成 · 六维蜘蛛图 + 总分大字 */
+.rpg-overview { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; }
+.rpg-radar { flex: 0 0 auto; background: linear-gradient(160deg, var(--paper), var(--paper-dark));
+  border: 2px solid rgba(212,175,55,.5); border-radius: 12px; padding: 4px; line-height: 0; }
+.rpg-radar svg { width: 160px; height: 160px; }
+.rpg-total { flex: 1; text-align: center; background: rgba(0,0,0,.3); border: 1px solid rgba(212,175,55,.3);
+  border-radius: 12px; padding: 12px 8px; }
+.rpg-total .rt-lbl { font-size: 16px; color: #c9b890; letter-spacing: 2px; }
+.rpg-total .rt-num { font-size: 56px; font-weight: 900; line-height: 1.05;
+  background: linear-gradient(180deg, #f7e9b0, var(--cn-gold) 45%, #b8860b);
+  -webkit-background-clip: text; background-clip: text; color: transparent; font-family: "DotGothic16", monospace; }
+.rpg-total .rt-grade { font-size: 15px; color: #d8c79c; margin-top: 4px; }
+
 .rpg-points { font-size: 17px; color: #d8c79c; margin: 6px 0; }
 .rpg-points b { color: var(--cn-gold); font-size: 22px; }
 .rpg-dims { display: flex; flex-direction: column; gap: 7px; margin: 8px 0; }

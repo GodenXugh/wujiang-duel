@@ -40,13 +40,13 @@
   function avatarChar(name) { return name[0]; }
   function hpColor(ratio) { return ratio > 0.5 ? "var(--hp-good)" : ratio > 0.22 ? "var(--hp-mid)" : "var(--hp-low)"; }
 
-  /* 六维评级：SS≥100 S≥98 A≥95 B≥85 C≥75 D≥60 E<60 */
+  /* 六维评级：SS≥100 S≥95 A≥90 B≥80 C≥70 D≥60 E<60 */
   function rateLetter(v) {
     if (v >= 100) return "SS";
-    if (v >= 98) return "S";
-    if (v >= 95) return "A";
-    if (v >= 85) return "B";
-    if (v >= 75) return "C";
+    if (v >= 95) return "S";
+    if (v >= 90) return "A";
+    if (v >= 80) return "B";
+    if (v >= 70) return "C";
     if (v >= 60) return "D";
     return "E";
   }
@@ -83,7 +83,7 @@
   /* ---------------- 雷达图 (SVG) ---------------- */
   function radarSVG(g, size = 200) {
     const dims = [["武力", g.wu], ["统帅", g.tong], ["智力", g.zhi], ["政治", g.zheng], ["魅力", g.mei], ["体力", g.ti]];
-    const cx = size / 2, cy = size / 2, R = size * 0.36, n = dims.length, max = 110;
+    const cx = size / 2, cy = size / 2, R = size * 0.36, n = dims.length, max = 120;
     const pt = (i, r) => {
       const ang = -Math.PI / 2 + i * 2 * Math.PI / n;
       return [cx + r * Math.cos(ang), cy + r * Math.sin(ang)];
@@ -127,7 +127,7 @@
   }
   function statRow(lbl, val) {
     return `<div class="stat-row"><span class="lbl">${lbl}</span>
-      <span class="track"><span class="bar" style="width:${Math.min(100, val / 1.1)}%;background:${gradeColor(val)}"></span></span>
+      <span class="track"><span class="bar" style="width:${Math.min(100, val / 1.2)}%;background:${gradeColor(val)}"></span></span>
       <span class="val">${val}</span>${gradeChip(val)}</div>`;
   }
 
@@ -264,7 +264,7 @@
     // 头像/姓名右侧的五维（评级 + 数值彩条 + 数值；体力另以下方血条呈现）
     $(".fstats", el).innerHTML = DIMS.filter(([k]) => k !== "ti").map(([k, label]) =>
       `<div class="fs-row"><span class="fs-lbl">${label[0]}</span>` +
-      `<span class="fs-track"><span class="fs-bar" style="width:${Math.min(100, g[k] / 1.15)}%;background:${gradeColor(g[k])}"></span></span>` +
+      `<span class="fs-track"><span class="fs-bar" style="width:${Math.min(100, g[k] / 1.2)}%;background:${gradeColor(g[k])}"></span></span>` +
       `<span class="fs-val">${g[k]}</span>${gradeChip(g[k])}</div>`
     ).join("");
     updateBars(el, fighter);
@@ -1347,11 +1347,11 @@
       DIMS.forEach(([k]) => g[k] = this.eff(c, k));
       return g;
     },
-    // 随机生成基线六维 + 一笔由玩家自行分配的加点
+    // 随机生成基线六维(最大不超过80) + 一笔由玩家自行分配的加点(最多30)
     rollStats() {
       const base = {};
-      DIMS.forEach(([k]) => base[k] = randInt(42, 70));
-      return { base, points: randInt(45, 80) };
+      DIMS.forEach(([k]) => base[k] = randInt(45, 80));
+      return { base, points: randInt(18, 30) };
     },
 
     open() {
@@ -1381,7 +1381,7 @@
           <div class="rpg-roll-box">${DIMS.map(([k, l]) => {
             const v = r.base[k];
             return `<div class="rr-dim"><span>${l}</span>
-              <span class="rr-track"><span class="rr-bar" style="width:${Math.min(100, v / 1.1)}%;background:${gradeColor(v)}"></span></span>
+              <span class="rr-track"><span class="rr-bar" style="width:${Math.min(100, v / 1.2)}%;background:${gradeColor(v)}"></span></span>
               <b>${v}</b>${gradeChip(v)}</div>`;
           }).join("")}
             <div class="rr-sum">基线总分 <b>${DIMS.reduce((s, [k]) => s + r.base[k], 0)}</b> · 可分配加点 <b style="color:var(--cn-gold)">${r.points}</b></div>
@@ -1438,7 +1438,7 @@
         const v = this.eff(c, k);
         return `<div class="rpg-dim">
           <span class="rd-lbl">${l}</span>
-          <span class="rd-track"><span class="rd-bar" style="width:${Math.min(100, v / 1.3)}%;background:${gradeColor(v)}"></span></span>
+          <span class="rd-track"><span class="rd-bar" style="width:${Math.min(100, v / 1.2)}%;background:${gradeColor(v)}"></span></span>
           <span class="rd-val">${v}</span>${gradeChip(v)}
           <button class="rd-plus" data-k="${k}" ${c.points > 0 ? '' : 'disabled'}>＋</button>
         </div>`;
@@ -1448,8 +1448,16 @@
           <div class="rpg-av">${avatarChar(c.name)}</div>
           <div class="rpg-meta">
             <div class="rpg-name">${c.name} <span class="rpg-lv">Lv.${c.level}</span></div>
-            <div class="rpg-side-tag">${c.side === 'cn' ? '三国风' : '战国风'} · 战绩 ${c.wins}胜${c.losses}负 · 六维总分 ${sum}</div>
+            <div class="rpg-side-tag">${c.side === 'cn' ? '三国风' : '战国风'} · 战绩 ${c.wins}胜${c.losses}负</div>
             <div class="rpg-exp"><span class="rpg-exp-fill" style="width:${expPct}%"></span><span class="rpg-exp-txt">EXP ${c.exp}/${need}</span></div>
+          </div>
+        </div>
+        <div class="rpg-overview">
+          <div class="rpg-radar">${radarSVG(this.heroGeneral(), 190)}</div>
+          <div class="rpg-total">
+            <div class="rt-lbl">六维总分</div>
+            <div class="rt-num">${sum}</div>
+            <div class="rt-grade">${gradeChip(Math.round(overallScore(this.heroGeneral())))} 综合</div>
           </div>
         </div>
         <div class="rpg-points">可分配加点：<b>${c.points}</b> ${c.points > 0 ? '（点 ＋ 分配）' : ''}</div>
@@ -1478,7 +1486,7 @@
     },
     allocate(k) {
       if (this.char.points <= 0) return;
-      if (this.eff(this.char, k) >= 140) { toast("该维度已达上限"); return; }
+      if (this.eff(this.char, k) >= 120) { toast("该维度已达上限 120"); return; }
       this.char.alloc[k] = (this.char.alloc[k] || 0) + 1;
       this.char.points--;
       AudioSystem.sfx.select();
@@ -1493,20 +1501,27 @@
     },
     onBattleEnd(heroWon, opp) {
       const c = this.char;
-      const oppSum = sumStats(opp);
-      let gain = heroWon ? 35 + Math.round(oppSum / 12) : 12 + Math.round(oppSum / 30);
+      const heroSum = sumStats(this.heroGeneral()), oppSum = sumStats(opp);
+      const diff = oppSum - heroSum;   // >0 表示对手更强
+      let gain, tag = "";
+      if (heroWon) {
+        if (diff > 0) { gain = 40 + Math.round(diff / heroSum * 600); tag = "（以弱胜强，经验大增！）"; }
+        else { gain = Math.max(8, 20 + Math.round(diff / 25)); tag = "（击败较弱者，经验微增）"; }
+      } else {
+        gain = 10 + Math.round(Math.max(0, diff) / 30);
+      }
       if (heroWon) c.wins++; else c.losses++;
       c.exp += gain;
       let lvUp = 0;
-      while (c.exp >= this.expNeed(c.level)) { c.exp -= this.expNeed(c.level); c.level++; c.points += 5; lvUp++; }
+      while (c.exp >= this.expNeed(c.level)) { c.exp -= this.expNeed(c.level); c.level++; c.points += 1; lvUp++; }
       this.save();
       const bg = c.side === 'cn' ? 'linear-gradient(135deg,var(--cn-red),#7a1420)' : 'linear-gradient(135deg,var(--jp-indigo),#141e3c)';
       openOverlay(`<div class="result-card">
         <h1>${heroWon ? '历练胜利' : '虽败犹荣'}</h1>
         <div class="winner-av" style="background:${bg}">${avatarChar(c.name)}</div>
         <div class="wname">${c.name}</div>
-        <div class="wdesc">${heroWon ? '击败' : '不敌'} ${opp.name}！<br>获得经验 <b style="color:var(--cn-red)">+${gain}</b>
-          ${lvUp ? `<br>🎉 升级 ${lvUp} 级！获得加点 <b style="color:var(--cn-red)">+${lvUp * 5}</b>` : ''}</div>
+        <div class="wdesc">${heroWon ? '击败' : '不敌'} ${opp.name}（总评 ${oppSum} / 你 ${heroSum}）${tag}<br>获得经验 <b style="color:var(--cn-red)">+${gain}</b>
+          ${lvUp ? `<br>🎉 升级 ${lvUp} 级！获得加点 <b style="color:var(--cn-red)">+${lvUp * 1}</b>` : ''}</div>
         <div class="btns">
           <button class="btn-primary" id="rpg-again">再历练</button>
           <button class="btn-ghost" id="rpg-hub">返回养成</button>
@@ -1549,7 +1564,7 @@
       const c = this.char;
       c.exp += gain;
       let lvUp = 0;
-      while (c.exp >= this.expNeed(c.level)) { c.exp -= this.expNeed(c.level); c.level++; c.points += 5; lvUp++; }
+      while (c.exp >= this.expNeed(c.level)) { c.exp -= this.expNeed(c.level); c.level++; c.points += 1; lvUp++; }
       this.save();
       const bg = c.side === 'cn' ? 'linear-gradient(135deg,var(--cn-red),#7a1420)' : 'linear-gradient(135deg,var(--jp-indigo),#141e3c)';
       setTimeout(() => {
@@ -1558,7 +1573,7 @@
           <div class="winner-av" style="background:${bg}">${avatarChar(c.name)}</div>
           <div class="wname">${c.name}</div>
           <div class="wdesc">${descHtml}<br>获得经验 <b style="color:var(--cn-red)">+${gain}</b>
-            ${lvUp ? `<br>🎉 升级 ${lvUp} 级！获得加点 <b style="color:var(--cn-red)">+${lvUp * 5}</b>` : ''}</div>
+            ${lvUp ? `<br>🎉 升级 ${lvUp} 级！获得加点 <b style="color:var(--cn-red)">+${lvUp * 1}</b>` : ''}</div>
           <div class="btns">
             <button class="btn-primary" id="rpg-r-again">再来一次</button>
             <button class="btn-ghost" id="rpg-r-hub">返回养成</button>
@@ -1573,7 +1588,7 @@
       const gain = placement.exp;
       c.exp += gain;
       let lvUp = 0;
-      while (c.exp >= this.expNeed(c.level)) { c.exp -= this.expNeed(c.level); c.level++; c.points += 5; lvUp++; }
+      while (c.exp >= this.expNeed(c.level)) { c.exp -= this.expNeed(c.level); c.level++; c.points += 1; lvUp++; }
       this.save();
       const bg = c.side === 'cn' ? 'linear-gradient(135deg,var(--cn-red),#7a1420)' : 'linear-gradient(135deg,var(--jp-indigo),#141e3c)';
       setTimeout(() => {
@@ -1582,7 +1597,7 @@
           <div class="winner-av" style="background:${bg}">${avatarChar(c.name)}</div>
           <div class="wname">${c.name}</div>
           <div class="wdesc">本届世界杯成绩：<b>${placement.label}</b><br>获得经验 <b style="color:var(--cn-red)">+${gain}</b>
-            ${lvUp ? `<br>🎉 升级 ${lvUp} 级！获得加点 <b style="color:var(--cn-red)">+${lvUp * 5}</b>` : ''}</div>
+            ${lvUp ? `<br>🎉 升级 ${lvUp} 级！获得加点 <b style="color:var(--cn-red)">+${lvUp * 1}</b>` : ''}</div>
           <div class="btns">
             <button class="btn-primary" id="rpg-cup-again">再战世界杯</button>
             <button class="btn-ghost" id="rpg-cup-hub">返回养成</button>
