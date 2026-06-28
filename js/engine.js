@@ -6,10 +6,10 @@
 
 const TACTICS = {
   fierce:  { key: "fierce",  name: "猛攻", icon: "⚔️", desc: "全力进攻，伤害高、消耗大，被「格挡」克制",   stam: 14, type: "atk" },
-  normal:  { key: "normal",  name: "普攻", icon: "🗡️", desc: "稳健出招，攻守平衡",                       stam: 8,  type: "atk" },
+  normal:  { key: "normal",  name: "普攻", icon: "🗡️", desc: "稳健出招，攻守平衡，伤害低于猛攻",           stam: 8,  type: "atk" },
   defend:  { key: "defend",  name: "格挡", icon: "🛡️", desc: "防御反击，克制「猛攻」，对「智谋」乏力",     stam: 5,  type: "atk" },
   strategy:{ key: "strategy",name: "智谋", icon: "🧠", desc: "以智取胜（智力伤害），克制「格挡」，受「猛攻」压制", stam: 7, type: "atk" },
-  charge:  { key: "charge",  name: "蓄力", icon: "🔥", desc: "蓄力一击，本回合防御弱，下回合暴击",         stam: 4,  type: "atk" },
+  charge:  { key: "charge",  name: "蓄力", icon: "🔥", desc: "凝气蓄力：恢复战意，且本回合防御弱、下回合暴发", stam: 4,  type: "atk" },
   // —— 计策（智力系）：成功率与效果均取决于双方「智力」 ——
   // 束缚 / 弱化为「计策(免费)」：发动后不占用本回合行动，仍可再出招，但每回合只能发动一个
   bind:    { key: "bind",    name: "束缚", icon: "🪢", desc: "计策(免费)：使敌方下一回合无法行动；发动后仍可出招，每回合限一计", stam: 12, type: "scheme", scheme: "bind", free: true },
@@ -52,8 +52,10 @@ function computeDamage(attacker, defender, atkTactic, defTactic, charged) {
   const luck = rand(0.82, 1.18);
   // 被「弱化」计策削弱的攻击力
   const atkMul = attacker.atkMul || 1;
+  // 招式威力：普攻明显弱于猛攻，拉开两者差距
+  const power = ({ fierce: 1.0, normal: 0.7, defend: 1.0, strategy: 1.0, charge: 1.0 })[atkTactic] || 1;
 
-  let dmg = (base * 0.32) * counter * mitigation * critMul * luck * atkMul;
+  let dmg = (base * 0.32) * counter * mitigation * critMul * luck * atkMul * power;
 
   // 会心一击：以「魅力」为主、智力为辅（气势夺人）
   const critChance = a.mei / 700 + a.zhi / 1800 + (charged ? 0.45 : 0.05);
@@ -96,9 +98,9 @@ function applyScheme(o, scheme, ok) {
     return { who: o.label, type: "scheme", scheme, ok: true, attacker: an, defender: dn,
       text: `${an} 施展【弱化】，${dn} 攻击力下降 ${Math.round(reduce * 100)}%（2回合）！` };
   }
-  // heal
+  // heal（回复量较此前下调）
   const before = a.hp;
-  const amount = Math.round(a.g.zhi * (0.45 + Math.random() * 0.3));
+  const amount = Math.round(a.g.zhi * (0.26 + Math.random() * 0.2));
   a.hp = Math.min(a.maxHp, a.hp + amount);
   const healed = Math.round(a.hp - before);
   return { who: o.label, type: "scheme", scheme, ok: true, attacker: an, heal: healed,
@@ -215,14 +217,18 @@ function resolveRound(p1, p2, plan1, plan2) {
     }
     const mk = o.plan.main || "normal";
     const tac = TACTICS[mk] || TACTICS.normal;
-    const cost = staminaCost(mk, o.atk.g);
-    o.atk.stam = Math.max(0, o.atk.stam - cost);
 
     if (mk === "charge") {
+      // 蓄力：恢复战意（并蓄势，下次出招暴发）
+      const gain = Math.round(28 + (o.atk.g.zheng || 0) * 0.12);
+      o.atk.stam = Math.min(100, o.atk.stam + gain);
       o.atk.charged = true;
-      events.push({ who: o.label, type: "charge", text: `${o.atk.g.name} 凝气蓄力，杀招将至！` });
+      events.push({ who: o.label, type: "charge", gain,
+        text: `${o.atk.g.name} 凝气蓄力，战意 +${gain}，蓄势待发！` });
       continue;
     }
+    const cost = staminaCost(mk, o.atk.g);
+    o.atk.stam = Math.max(0, o.atk.stam - cost);
     // 疗伤等占用行动的计策
     if (tac.type === "scheme") {
       const ok = Math.random() < schemeSuccess(o.atk, o.def, tac.scheme);
