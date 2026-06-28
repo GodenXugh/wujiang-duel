@@ -571,7 +571,7 @@
     $("#battle-log").innerHTML = "";
     $("#round-badge").textContent = "第 1 回合";
     logLine(`【${BATTLE.p1.g.name}】 对阵 【${BATTLE.p2.g.name}】，单挑开始！`, "sys");
-    logLine(`体力=血量 武力=攻 智力=智谋 统帅=先手/减伤 政治=战意 魅力=会心/卸力`, "sys");
+    logLine(`体力=血量 武力=攻 智力=谋攻 统帅=先手/减伤/格挡 政治=战意 魅力=暴击率`, "sys");
     BATTLE.busy = false;
     BATTLE.token = ++battleToken;
     BATTLE.speed = PREF.speed;
@@ -709,6 +709,15 @@
       await battleSleep(380);
       return;
     }
+    if (ev.type === "miss") {
+      AudioSystem.sfx.gallop();
+      await Duel.attack(atk, ev.tactic, BATTLE.speed);
+      Duel.setCharge(atk, false);
+      AudioSystem.sfx.guard();
+      logLine(ev.text, "sys");
+      await battleSleep(320);
+      return;
+    }
     if (ev.type === "hit") {
       AudioSystem.sfx.gallop();
       AudioSystem.sfx.swing();
@@ -716,7 +725,7 @@
       await Duel.attack(atk, ev.tactic, BATTLE.speed);
       Duel.setCharge(atk, false);
 
-      const softened = ev.evaded || ev.counter <= 0.7;
+      const softened = ev.guarded || ev.counter <= 0.7;
       if (ev.crit) AudioSystem.sfx.crit();
       else if (softened) AudioSystem.sfx.guard();
       else AudioSystem.sfx.hit();
@@ -733,16 +742,10 @@
     }
     if (ev.type === "defend") {
       AudioSystem.sfx.guard();
-      logLine(ev.text, ev.ok ? cls : "sys");
-      if (ev.ok) {
-        Duel.setCharge(atk, true);
-        updateBars($("#f-left"), BATTLE.p1);   // 格挡成功略增战意
-        updateBars($("#f-right"), BATTLE.p2);
-        await battleSleep(380);
-        Duel.setCharge(atk, false);
-      } else {
-        await battleSleep(320);
-      }
+      Duel.setCharge(atk, true);
+      logLine(ev.text, cls);
+      await battleSleep(380);
+      Duel.setCharge(atk, false);
       return;
     }
     if (ev.type === "bound") {
