@@ -261,8 +261,8 @@
     $(".favatar", el).textContent = avatarChar(g.name);
     $(".fname", el).textContent = g.name;
     $(".ftitle", el).textContent = g.title || "";
-    $(".ftotal", el).innerHTML = `总评 <b>${sumStats(g)}</b>`;
-    // 姓名旁的五维彩条（体力另以下方血条呈现）
+    $(".ftotal", el).innerHTML = `总<b>${sumStats(g)}</b>`;
+    // 姓名旁的五维紧凑彩条（体力另以下方血条呈现）
     $(".fstats", el).innerHTML = DIMS.filter(([k]) => k !== "ti").map(([k, label]) =>
       `<div class="fs-row"><span class="fs-lbl">${label[0]}</span>` +
       `<span class="fs-track"><span class="fs-bar" style="width:${Math.min(100, g[k] / 1.15)}%;background:${gradeColor(g[k])}"></span></span>` +
@@ -512,17 +512,24 @@
   function renderTactics(enabled) {
     const wrap = $("#tactics");
     const g = BATTLE.p1.g;
+    const freeUsed = !!BATTLE.freeChoice;
     wrap.innerHTML = Object.values(TACTICS).map(t => {
       const cost = staminaCost(t.key, g);
-      return `<button class="tactic-btn ${t.type === "scheme" ? "scheme" : ""}" data-t="${t.key}" title="${t.desc}">
+      const chosen = BATTLE.freeChoice === t.key ? " chosen" : "";
+      return `<button class="tactic-btn ${t.type === "scheme" ? "scheme" : ""}${t.free ? " free" : ""}${chosen}" data-t="${t.key}" title="${t.desc}">
         <span class="ti">${t.icon}</span><span class="tn">${t.name}</span>
         <span class="stcost">耗${cost}</span>
       </button>`;
     }).join("");
     $$(".tactic-btn", wrap).forEach(b => {
-      const cost = staminaCost(b.dataset.t, g);
-      b.disabled = !enabled || BATTLE.spectate || BATTLE.p1.stam < cost;
-      b.onclick = () => playerTactic(b.dataset.t);
+      const key = b.dataset.t;
+      const t = TACTICS[key];
+      const cost = staminaCost(key, g);
+      // 免费计策：已用过一计则禁用其余计策；其余为主行动
+      let dis = !enabled || BATTLE.spectate || BATTLE.p1.stam < cost;
+      if (t.free && freeUsed) dis = true;
+      b.disabled = dis;
+      b.onclick = () => (t.free ? chooseFree(key) : playerTactic(key));
     });
   }
 
@@ -583,13 +590,14 @@
 
   function nextRoundPrompt() {
     BATTLE.round++;
+    BATTLE.freeChoice = null;             // 新回合清空已备计策
     $("#round-badge").textContent = `第 ${BATTLE.round} 回合`;
-    // 我方被束缚：本回合自动跳过（出招会被结算时忽略）
-    if (BATTLE.p1.bound > 0) {
+    // 我方被束缚：本回合自动跳过
+    if (!BATTLE.spectate && BATTLE.p1.bound > 0) {
       renderTactics(false);
       $("#battle-foot").textContent = `${BATTLE.p1.g.name} 被束缚，无法行动…`;
       const tok = BATTLE.token;
-      BATTLE._autoTimer = setTimeout(() => { if (BATTLE && BATTLE.token === tok) playerTactic("normal"); }, 780 / BATTLE.speed);
+      BATTLE._autoTimer = setTimeout(() => { if (BATTLE && BATTLE.token === tok) doRound({ free: null, main: "normal" }); }, 780 / BATTLE.speed);
       return;
     }
     renderTactics(true);
@@ -605,23 +613,42 @@
   function maybeAutoPlay() {
     if (!BATTLE || BATTLE.busy || !BATTLE.auto) return;
     if (overlay.classList.contains("show")) return;
-    const t = aiChooseTactic(BATTLE.p1, BATTLE.p2);
-    playerTactic(t);
+    doRound(aiChoosePlan(BATTLE.p1, BATTLE.p2));
   }
 
-  async function playerTactic(tKey) {
+  // 手动：点免费计策(束缚/弱化)——记下本回合计策，不结算回合，仍可再出招
+  function chooseFree(key) {
+    if (!BATTLE || BATTLE.busy || BATTLE.spectate) return;
+    if (BATTLE.p1.bound > 0) return;
+    if (BATTLE.freeChoice) return;                 // 每回合限一计
+    const cost = staminaCost(key, BATTLE.p1.g);
+    if (BATTLE.p1.stam < cost) { toast("战意不足"); return; }
+    BATTLE.freeChoice = key;
+    AudioSystem.sfx.select();
+    renderTactics(true);
+    $("#battle-foot").textContent = `已备【${TACTICS[key].name}】，请再选择出招`;
+  }
+
+  // 玩家选定「主行动」后结算整回合（携带已选的免费计策）
+  function playerTactic(mainKey) {
+    doRound({ free: BATTLE.freeChoice, main: mainKey });
+  }
+
+  // 结算一整回合：p1Plan 为我方计划，对手由 AI 决策
+  async function doRound(p1Plan) {
     if (!BATTLE || BATTLE.busy) return;
     const myTok = BATTLE.token;           // 该回合所属战斗；战斗被替换则中途作废
     const stale = () => !BATTLE || BATTLE.token !== myTok;
     BATTLE.busy = true;
+    BATTLE.freeChoice = null;
     clearTimeout(BATTLE._autoTimer);
     renderTactics(false);
 
-    const t1 = tKey;
-    const t2 = aiChooseTactic(BATTLE.p2, BATTLE.p1);
-    $("#battle-foot").textContent = `${BATTLE.p1.g.name}【${TACTICS[t1].name}】 ⚔ ${BATTLE.p2.g.name}【${TACTICS[t2].name}】`;
+    const p2Plan = aiChoosePlan(BATTLE.p2, BATTLE.p1);
+    const planName = p => (p.free ? `【${TACTICS[p.free].name}】+` : "") + `【${TACTICS[p.main].name}】`;
+    $("#battle-foot").textContent = `${BATTLE.p1.g.name}${planName(p1Plan)} ⚔ ${BATTLE.p2.g.name}${planName(p2Plan)}`;
 
-    const events = resolveRound(BATTLE.p1, BATTLE.p2, t1, t2);
+    const events = resolveRound(BATTLE.p1, BATTLE.p2, p1Plan, p2Plan);
 
     for (const ev of events) {
       await applyEvent(ev);
@@ -865,7 +892,7 @@
       let guard = 0;
       while (p1.hp > 0 && p2.hp > 0 && guard++ < 300) {
         BATTLE.round++;
-        resolveRound(p1, p2, aiChooseTactic(p1, p2), aiChooseTactic(p2, p1));
+        resolveRound(p1, p2, aiChoosePlan(p1, p2), aiChoosePlan(p2, p1));
       }
       BATTLE.token = ++battleToken;     // 作废在飞的回合动画，避免污染后续
       BATTLE.busy = false;

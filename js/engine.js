@@ -11,9 +11,10 @@ const TACTICS = {
   strategy:{ key: "strategy",name: "智谋", icon: "🧠", desc: "以智取胜（智力伤害），克制「格挡」，受「猛攻」压制", stam: 7, type: "atk" },
   charge:  { key: "charge",  name: "蓄力", icon: "🔥", desc: "蓄力一击，本回合防御弱，下回合暴击",         stam: 4,  type: "atk" },
   // —— 计策（智力系）：成功率与效果均取决于双方「智力」 ——
-  bind:    { key: "bind",    name: "束缚", icon: "🪢", desc: "计策：使敌方下一回合无法行动；智力差越大越易成功", stam: 12, type: "scheme", scheme: "bind" },
-  weaken:  { key: "weaken",  name: "弱化", icon: "🌀", desc: "计策：暂时削弱敌方攻击力(2回合)；智力越高效果越强", stam: 10, type: "scheme", scheme: "weaken" },
-  heal:    { key: "heal",    name: "疗伤", icon: "💊", desc: "计策：运功恢复自身体力；智力越高回复越多",           stam: 11, type: "scheme", scheme: "heal" },
+  // 束缚 / 弱化为「计策(免费)」：发动后不占用本回合行动，仍可再出招，但每回合只能发动一个
+  bind:    { key: "bind",    name: "束缚", icon: "🪢", desc: "计策(免费)：使敌方下一回合无法行动；发动后仍可出招，每回合限一计", stam: 12, type: "scheme", scheme: "bind", free: true },
+  weaken:  { key: "weaken",  name: "弱化", icon: "🌀", desc: "计策(免费)：削弱敌方攻击力(2回合)；发动后仍可出招，每回合限一计", stam: 10, type: "scheme", scheme: "weaken", free: true },
+  heal:    { key: "heal",    name: "疗伤", icon: "💊", desc: "计策：运功恢复自身体力（占用本回合行动）；智力越高回复越多",          stam: 11, type: "scheme", scheme: "heal" },
 };
 
 // 相克关系：attacker 战术 对 defender 战术的倍率
@@ -84,7 +85,8 @@ function applyScheme(o, scheme, ok) {
   }
   if (scheme === "bind") {
     const dur = (a.g.zhi - d.g.zhi > 45) ? 2 : 1;
-    d.bound = Math.max(d.bound || 0, dur);
+    // 记入 boundAdd，回合结束时才计入，确保是「下一回合」而非当前回合生效
+    d.boundAdd = Math.max(d.boundAdd || 0, dur);
     return { who: o.label, type: "scheme", scheme, ok: true, attacker: an, defender: dn,
       text: `${an} 施展【束缚】，${dn} ${dur > 1 ? dur + "回合" : "下一回合"}无法行动！` };
   }
@@ -103,7 +105,7 @@ function applyScheme(o, scheme, ok) {
     text: healed > 0 ? `${an} 施展【疗伤】，恢复体力 ${healed} 点！` : `${an} 施展【疗伤】，但体力已满。` };
 }
 
-// AI 选择战术
+// AI 选择「主行动」（攻击/防御/蓄力/智谋/疗伤；不含免费计策）
 function aiChooseTactic(self, foe) {
   const g = self.g;
   const lowStam = self.stam < 20;
@@ -118,10 +120,6 @@ function aiChooseTactic(self, foe) {
     const r = Math.random();
     return r < 0.5 ? "charge" : (r < 0.8 ? "defend" : "normal");
   }
-  // 智将施展计策：束缚 / 弱化（智力越高越倾向）
-  if (g.zhi >= 80 && has("bind") && Math.random() < 0.16) return "bind";
-  if (g.zhi >= 72 && has("weaken") && (foe.atkMul || 1) >= 1 && Math.random() < 0.20) return "weaken";
-
   const r = Math.random();
   // 智力高者偏好智谋，武力高者偏好猛攻
   const wuBias = g.wu / (g.wu + g.zhi);
@@ -130,6 +128,23 @@ function aiChooseTactic(self, foe) {
   if (r < wuBias * 0.5 + 0.25) return g.zhi > 75 ? "strategy" : "normal";
   if (r < 0.85) return "normal";
   return "defend";
+}
+
+// AI 的整套行动：一个可选的免费计策(束缚/弱化) + 一个主行动
+// 计算机控制的武将同样会用计；用计后仍正常出招
+function aiChoosePlan(self, foe) {
+  const g = self.g;
+  let free = null;
+  // 留足战意给主攻后，智将才考虑用计
+  const room = cost => self.stam >= cost + 8;
+  if (g.zhi >= 78 && (foe.bound || 0) <= 0 && (foe.boundAdd || 0) <= 0 &&
+      room(staminaCost("bind", g)) && Math.random() < 0.22) {
+    free = "bind";
+  } else if (g.zhi >= 70 && (foe.atkMul || 1) >= 1 &&
+      room(staminaCost("weaken", g)) && Math.random() < 0.26) {
+    free = "weaken";
+  }
+  return { free, main: aiChooseTactic(self, foe) };
 }
 
 // 创建一个战斗单位
@@ -142,43 +157,73 @@ function makeFighter(general) {
     stam: Math.min(100, Math.round(55 + (general.zheng || 60) * 0.45)),
     charged: false,
     bound: 0,        // 被束缚的剩余回合（>0 时无法行动）
+    boundAdd: 0,     // 本回合被施加、回合末才计入的束缚（确保「下一回合」生效）
     atkMul: 1,       // 攻击力倍率（被「弱化」时 <1）
     atkMulT: 0,      // 弱化的剩余回合
   };
 }
 
-// 结算一个完整回合（双方同时出招），返回日志事件
-function resolveRound(p1, p2, t1, t2) {
+// 将参数规整为行动计划：{ free: 束缚/弱化或null, main: 主行动 }
+function normPlan(p) {
+  if (p == null) return { free: null, main: "normal" };
+  if (typeof p === "string") {
+    // 兼容旧用法：若传入的是免费计策，归入 free；否则为主行动
+    const t = TACTICS[p];
+    return t && t.free ? { free: p, main: "normal" } : { free: null, main: p };
+  }
+  return { free: p.free || null, main: p.main || "normal" };
+}
+
+// 结算一个完整回合，返回日志事件。
+// 流程：①免费计策(束缚/弱化)阶段 → ②主行动阶段。计策不占用主行动。
+function resolveRound(p1, p2, plan1, plan2) {
+  plan1 = normPlan(plan1); plan2 = normPlan(plan2);
   const events = [];
   const order = [
-    { atk: p1, def: p2, t: t1, dt: t2, label: "p1" },
-    { atk: p2, def: p1, t: t2, dt: t1, label: "p2" },
+    { atk: p1, def: p2, plan: plan1, dt: plan2.main, label: "p1" },
+    { atk: p2, def: p1, plan: plan2, dt: plan1.main, label: "p2" },
   ];
   // 速度：统帅+随机决定先后
   const spd1 = p1.g.tong + rand(0, 30);
   const spd2 = p2.g.tong + rand(0, 30);
   if (spd2 > spd1) order.reverse();
 
+  // —— 阶段①：免费计策（束缚/弱化）。被束缚者本回合无法发动 ——
   for (const o of order) {
     if (o.atk.hp <= 0 || o.def.hp <= 0) continue;
-    // 被束缚：本回合无法行动（消耗一层束缚）
+    if (o.atk.bound > 0) continue;            // 被束缚：本回合彻底无法行动
+    const fk = o.plan.free;
+    if (!fk) continue;
+    const tac = TACTICS[fk];
+    if (!tac || !tac.free) continue;
+    const cost = staminaCost(fk, o.atk.g);
+    if (o.atk.stam < cost) continue;          // 战意不足，计策落空（不报错）
+    o.atk.stam -= cost;
+    const ok = Math.random() < schemeSuccess(o.atk, o.def, tac.scheme);
+    events.push(applyScheme(o, tac.scheme, ok));
+  }
+
+  // —— 阶段②：主行动（攻击/格挡/智谋/蓄力/疗伤）——
+  for (const o of order) {
+    if (o.atk.hp <= 0 || o.def.hp <= 0) continue;
+    // 被束缚：跳过主行动并消耗一层束缚
     if (o.atk.bound > 0) {
       o.atk.bound--;
       events.push({ who: o.label, type: "bound", attacker: o.atk.g.name,
         text: `${o.atk.g.name} 被束缚，本回合无法行动！` });
       continue;
     }
-    const tac = TACTICS[o.t] || TACTICS.normal;
-    // 消耗战意：「政治」越高，调度有方、出招更省力（最多省 ~30%）
-    const cost = staminaCost(o.t, o.atk.g);
+    const mk = o.plan.main || "normal";
+    const tac = TACTICS[mk] || TACTICS.normal;
+    const cost = staminaCost(mk, o.atk.g);
     o.atk.stam = Math.max(0, o.atk.stam - cost);
 
-    if (o.t === "charge") {
+    if (mk === "charge") {
       o.atk.charged = true;
       events.push({ who: o.label, type: "charge", text: `${o.atk.g.name} 凝气蓄力，杀招将至！` });
       continue;
     }
-    // 计策（束缚 / 弱化 / 疗伤）：以智力定成败与效果，不直接造成伤害
+    // 疗伤等占用行动的计策
     if (tac.type === "scheme") {
       const ok = Math.random() < schemeSuccess(o.atk, o.def, tac.scheme);
       events.push(applyScheme(o, tac.scheme, ok));
@@ -186,13 +231,13 @@ function resolveRound(p1, p2, t1, t2) {
     }
     const wasCharged = o.atk.charged;
     o.atk.charged = false;
-    const res = computeDamage(o.atk, o.def, o.t, o.dt, wasCharged);
+    const res = computeDamage(o.atk, o.def, mk, o.dt, wasCharged);
     o.def.hp = Math.max(0, o.def.hp - res.dmg);
     events.push({
       who: o.label, type: "hit", dmg: res.dmg, crit: res.crit, evaded: res.evaded,
-      counter: res.counter, charged: wasCharged, tactic: o.t,
+      counter: res.counter, charged: wasCharged, tactic: mk,
       attacker: o.atk.g.name, defender: o.def.g.name, defHp: o.def.hp, defMax: o.def.maxHp,
-      text: buildHitText(o.atk.g.name, o.def.g.name, o.t, res, wasCharged),
+      text: buildHitText(o.atk.g.name, o.def.g.name, mk, res, wasCharged),
     });
     if (o.def.hp <= 0) {
       events.push({ who: o.label, type: "ko", winner: o.atk.g.name, loser: o.def.g.name,
@@ -203,8 +248,9 @@ function resolveRound(p1, p2, t1, t2) {
   // 每回合恢复战意：「政治」越高，整军经武、回气越快
   p1.stam = Math.min(100, p1.stam + staminaRegen(p1.g));
   p2.stam = Math.min(100, p2.stam + staminaRegen(p2.g));
-  // 增益/减益衰减（弱化随回合消退）
+  // 回合末结算：束缚延迟生效（下一回合）、弱化随回合消退
   for (const f of [p1, p2]) {
+    if (f.boundAdd > 0) { f.bound += f.boundAdd; f.boundAdd = 0; }
     if (f.atkMulT > 0) { f.atkMulT--; if (f.atkMulT === 0) f.atkMul = 1; }
   }
   return events;
@@ -238,9 +284,7 @@ function autoBattle(g1, g2, maxRounds = 40) {
   let r = 0;
   while (p1.hp > 0 && p2.hp > 0 && r < maxRounds) {
     r++;
-    const t1 = aiChooseTactic(p1, p2);
-    const t2 = aiChooseTactic(p2, p1);
-    const ev = resolveRound(p1, p2, t1, t2);
+    const ev = resolveRound(p1, p2, aiChoosePlan(p1, p2), aiChoosePlan(p2, p1));
     log.push({ round: r, events: ev });
     hpSeq.push([Math.max(0, Math.round(p1.hp)), Math.max(0, Math.round(p2.hp))]);
     if (p1.hp <= 0 || p2.hp <= 0) break;
@@ -254,5 +298,5 @@ function autoBattle(g1, g2, maxRounds = 40) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { TACTICS, makeFighter, resolveRound, aiChooseTactic, autoBattle, computeDamage, staminaCost, staminaRegen, schemeSuccess, applyScheme };
+  module.exports = { TACTICS, makeFighter, resolveRound, aiChooseTactic, aiChoosePlan, autoBattle, computeDamage, staminaCost, staminaRegen, schemeSuccess, applyScheme };
 }
