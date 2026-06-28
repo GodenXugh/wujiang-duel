@@ -206,9 +206,9 @@ html, body {
   width: 100%; word-break: break-word; }
 /* 五维区整体收窄，字号加大 */
 .fstats-wrap { flex: 1; min-width: 0; }
-/* 总评：放在五维/姓名区与体力条之间，紧贴体力条上方 */
-.fighter .ftotal { font-size: 12px; color: #c9b890; text-align: center; margin-top: 5px; width: 100%; }
-.fighter .ftotal b { color: var(--cn-gold); font-size: 15px; font-family: "DotGothic16", monospace; }
+/* 总评：置于姓名下方（头像列内），即五维下部行的一侧、体力条上方 */
+.fighter .ftotal { font-size: 11px; color: #c9b890; text-align: center; margin-top: 5px; width: 100%; white-space: nowrap; line-height: 1.2; }
+.fighter .ftotal b { color: var(--cn-gold); font-size: 14px; font-family: "DotGothic16", monospace; }
 /* 五维：评级 + 数值彩条 + 数值，逐行排列 */
 .fstats { display: flex; flex-direction: column; gap: 3px; }
 .fs-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
