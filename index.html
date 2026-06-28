@@ -37,9 +37,6 @@
       <button class="menu-btn" data-go="war">
         <span class="mi">🚩</span><span>阵营大战<small>三国 VS 战国，百将捉对厮杀</small></span>
       </button>
-      <button class="menu-btn" data-go="select" data-mode="random">
-        <span class="mi">🎲</span><span>随机演武<small>命运抽签，强者随机对决</small></span>
-      </button>
       <button class="menu-btn" data-go="cup">
         <span class="mi">🏆</span><span>武将世界杯<small>随机分组，小组赛+淘汰赛争霸</small></span>
       </button>
@@ -71,6 +68,7 @@
     <div class="grid" id="select-grid"></div>
     <div class="confirm-bar">
       <div class="info" id="select-info">请选择武将</div>
+      <button id="select-random" class="btn-random">🎲 随机双将</button>
       <button id="select-confirm" disabled>对决</button>
     </div>
   </section>
@@ -90,21 +88,22 @@
         <div class="fighter left" id="f-left">
           <div class="fhead">
             <div class="favatar" data-info></div>
-            <div><div class="fname"></div><div class="ftitle"></div></div>
+            <div class="finfo"><div class="fname"></div><div class="ftitle"></div><div class="ftotal"></div></div>
           </div>
-          <div class="hpbar-wrap"><div class="hpbar"><div class="fill"></div><div class="txt"></div></div></div>
+          <div class="fstats"></div>
+          <div class="hpbar-wrap"><div class="hp-lbl">体力</div><div class="hpbar"><div class="fill"></div><div class="txt"></div></div></div>
           <div class="stam-wrap"><div class="stambar"><div class="fill"></div></div></div>
         </div>
         <div class="fighter right" id="f-right">
           <div class="fhead">
             <div class="favatar" data-info></div>
-            <div><div class="fname"></div><div class="ftitle"></div></div>
+            <div class="finfo"><div class="fname"></div><div class="ftitle"></div><div class="ftotal"></div></div>
           </div>
-          <div class="hpbar-wrap"><div class="hpbar"><div class="fill"></div><div class="txt"></div></div></div>
+          <div class="fstats"></div>
+          <div class="hpbar-wrap"><div class="hp-lbl">体力</div><div class="hpbar"><div class="fill"></div><div class="txt"></div></div></div>
           <div class="stam-wrap"><div class="stambar"><div class="fill"></div></div></div>
         </div>
       </div>
-      <div class="cmp-stats" id="cmp-stats"></div>
       <div class="vs-center"><span class="round-badge" id="round-badge">第 1 回合</span></div>
       <div class="stage" id="stage">
         <canvas id="duel-canvas" width="256" height="160"></canvas>

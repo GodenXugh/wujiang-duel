@@ -142,32 +142,34 @@
 
     open(mode) {
       this.mode = mode; this.picks = []; this.side = "cn";
-      this.need = mode === "classic" ? 2 : (mode === "random" ? 0 : (mode === "cup" ? Tournament.size : 1));
-      const titles = { classic: "经典单挑 · 选择双将", gauntlet: "车轮大战 · 选你的主将", random: "随机演武", cup: `世界杯 · 选 ${Tournament.size} 将` };
+      this.need = mode === "classic" ? 2 : (mode === "cup" ? Tournament.size : 1);
+      const titles = { classic: "经典单挑 · 选择双将", gauntlet: "车轮大战 · 选你的主将", cup: `世界杯 · 选 ${Tournament.size} 将` };
       $("#select-title").textContent = titles[mode] || "选择武将";
       const hints = {
-        classic: "依次点选两名武将（可同阵营）· 点 ⓘ 查看六维属性",
+        classic: "依次点选两名武将（可同阵营）· 或点「随机双将」· 点 ⓘ 查看六维属性",
         gauntlet: "选一名主将连斩群雄 · 点 ⓘ 查看六维属性",
-        random: "无需选择，直接随机抽取两名武将对决",
         cup: `点选参赛武将（最多 ${Tournament.size} 名）· 不足将随机补满`,
       };
       $("#select-hint").textContent = hints[mode] || "";
+      // 「随机双将」仅经典单挑可用
+      $("#select-random").style.display = mode === "classic" ? "" : "none";
       $("#cn-count").textContent = DB.bySide("cn").length;
       $("#jp-count").textContent = DB.bySide("jp").length;
       $("#select-search").value = "";
 
-      if (mode === "random") {
-        // 随机模式直接开战
-        const all = DB.list;
-        const a = all[Math.floor(Math.random() * all.length)];
-        let b; do { b = all[Math.floor(Math.random() * all.length)]; } while (b.id === a.id);
-        showScreen("select");
-        setTimeout(() => startClassicBattle(a, b, true), 30);
-        return;
-      }
       this.render();
       this.updateBar();
       showScreen("select");
+    },
+    // 经典单挑：随机抽取两名武将直接开战
+    randomPick() {
+      const all = DB.list;
+      if (all.length < 2) return;
+      const a = all[Math.floor(Math.random() * all.length)];
+      let b; do { b = all[Math.floor(Math.random() * all.length)]; } while (b.id === a.id);
+      this.picks = [a, b];
+      AudioSystem.sfx.select();
+      startClassicBattle(a, b, false);
     },
     setSide(side) {
       this.side = side;
@@ -255,32 +257,18 @@
     const el = $(sel);
     const isLeft = sel.includes('left');
     el.className = `fighter ${isLeft ? 'left' : 'right'} ${sideClass}`;
-    $(".favatar", el).textContent = avatarChar(fighter.g.name);
-    $(".fname", el).textContent = fighter.g.name;
-    $(".ftitle", el).textContent = fighter.g.title || "";
+    const g = fighter.g;
+    $(".favatar", el).textContent = avatarChar(g.name);
+    $(".fname", el).textContent = g.name;
+    $(".ftitle", el).textContent = g.title || "";
+    $(".ftotal", el).innerHTML = `总评 <b>${sumStats(g)}</b>`;
+    // 姓名旁的五维彩条（体力另以下方血条呈现）
+    $(".fstats", el).innerHTML = DIMS.filter(([k]) => k !== "ti").map(([k, label]) =>
+      `<div class="fs-row"><span class="fs-lbl">${label[0]}</span>` +
+      `<span class="fs-track"><span class="fs-bar" style="width:${Math.min(100, g[k] / 1.15)}%;background:${gradeColor(g[k])}"></span></span>` +
+      `<span class="fs-val">${g[k]}</span></div>`
+    ).join("");
     updateBars(el, fighter);
-  }
-
-  // 六维同行对比：每一维左右并排，高者高亮，附评级
-  function renderCmpStats() {
-    const a = BATTLE.p1.g, b = BATTLE.p2.g;
-    const rows = DIMS.map(([k, label]) => {
-      const lv = a[k], rv = b[k];
-      const lwin = lv > rv ? "win" : (lv < rv ? "lose" : "");
-      const rwin = rv > lv ? "win" : (rv < lv ? "lose" : "");
-      return `<div class="cmp-row">
-        <span class="cl ${lwin}">${gradeChip(lv)}<b class="v">${lv}</b></span>
-        <span class="cn">${label}</span>
-        <span class="cr ${rwin}"><b class="v">${rv}</b>${gradeChip(rv)}</span>
-      </div>`;
-    }).join("");
-    const oa = overallLetter(a), ob = overallLetter(b);
-    $("#cmp-stats").innerHTML = rows +
-      `<div class="cmp-row cmp-total">
-        <span class="cl"><span class="g grade-${oa}">${oa}</span></span>
-        <span class="cn">总评</span>
-        <span class="cr"><span class="g grade-${ob}">${ob}</span></span>
-      </div>`;
   }
 
   /* ============================================================
@@ -526,7 +514,7 @@
     const g = BATTLE.p1.g;
     wrap.innerHTML = Object.values(TACTICS).map(t => {
       const cost = staminaCost(t.key, g);
-      return `<button class="tactic-btn" data-t="${t.key}" title="${t.desc}">
+      return `<button class="tactic-btn ${t.type === "scheme" ? "scheme" : ""}" data-t="${t.key}" title="${t.desc}">
         <span class="ti">${t.icon}</span><span class="tn">${t.name}</span>
         <span class="stcost">耗${cost}</span>
       </button>`;
@@ -571,7 +559,6 @@
   function enterBattle() {
     renderFighter("#f-left", BATTLE.p1, BATTLE.p1.g.side);
     renderFighter("#f-right", BATTLE.p2, BATTLE.p2.g.side);
-    renderCmpStats();
     Duel.setup(BATTLE.p1.g, BATTLE.p2.g);
     $("#battle-log").innerHTML = "";
     $("#round-badge").textContent = "第 1 回合";
@@ -597,6 +584,14 @@
   function nextRoundPrompt() {
     BATTLE.round++;
     $("#round-badge").textContent = `第 ${BATTLE.round} 回合`;
+    // 我方被束缚：本回合自动跳过（出招会被结算时忽略）
+    if (BATTLE.p1.bound > 0) {
+      renderTactics(false);
+      $("#battle-foot").textContent = `${BATTLE.p1.g.name} 被束缚，无法行动…`;
+      const tok = BATTLE.token;
+      BATTLE._autoTimer = setTimeout(() => { if (BATTLE && BATTLE.token === tok) playerTactic("normal"); }, 780 / BATTLE.speed);
+      return;
+    }
     renderTactics(true);
     if (BATTLE.auto) {
       $("#battle-foot").textContent = (BATTLE.spectate ? "阵营观战中 ⚔ " : "自动作战中 —— ") + BATTLE.p1.g.name;
@@ -680,6 +675,34 @@
       await battleSleep(ev.crit ? 460 : 320);
       return;
     }
+    if (ev.type === "bound") {
+      AudioSystem.sfx.guard();
+      logLine(ev.text, cls);
+      await battleSleep(420);
+      return;
+    }
+    if (ev.type === "scheme") {
+      AudioSystem.sfx.charge();
+      Duel.setCharge(atk, true);
+      logLine(ev.text, ev.ok ? cls : "sys");
+      await battleSleep(300);
+      Duel.setCharge(atk, false);
+      if (ev.ok) {
+        if (ev.scheme === "heal") {
+          AudioSystem.sfx.victory();
+          updateBars($("#f-left"), BATTLE.p1);
+          updateBars($("#f-right"), BATTLE.p2);
+          floatDamage(ev.who === "p1" ? "left" : "right", ev.heal, false, true);
+        } else {
+          // 束缚/弱化命中：在敌方一侧闪现效果
+          AudioSystem.sfx.crit();
+          Duel.hit(def);
+          $("#duel-canvas").classList.remove("flash"); void $("#duel-canvas").offsetWidth; $("#duel-canvas").classList.add("flash");
+        }
+      }
+      await battleSleep(ev.ok ? 460 : 320);
+      return;
+    }
     if (ev.type === "ko") {
       AudioSystem.sfx.ko();
       Duel.ko(def);
@@ -695,11 +718,11 @@
     $("#btn-speed").textContent = "速度 ×" + (BATTLE.speed || 1);
   }
 
-  function floatDamage(side, dmg, crit) {
+  function floatDamage(side, dmg, crit, heal) {
     const stage = $("#stage");
     const d = document.createElement("div");
-    d.className = "dmg-float" + (crit ? " crit" : "");
-    d.textContent = "-" + dmg;
+    d.className = "dmg-float" + (crit ? " crit" : "") + (heal ? " heal" : "");
+    d.textContent = (heal ? "+" : "-") + dmg;
     d.style.left = (side === "left" ? 28 : 64) + "%";
     d.style.top = "30%";
     stage.appendChild(d);
@@ -1674,6 +1697,7 @@
     $$(".side-tab[data-side]").forEach(t => t.onclick = () => SelectUI.setSide(t.dataset.side));
     $("#select-search").oninput = () => SelectUI.render();
     $("#select-confirm").onclick = () => SelectUI.confirm();
+    $("#select-random").onclick = () => SelectUI.randomPick();
 
     // 阵营战
     $("#war-start").onclick = () => War.start();
