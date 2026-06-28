@@ -511,10 +511,10 @@
   function renderTactics(enabled) {
     const wrap = $("#tactics");
     const g = BATTLE.p1.g;
-    const freeUsed = !!BATTLE.freeChoice;
+    const used = BATTLE.freeUsed || {};
     wrap.innerHTML = Object.values(TACTICS).map(t => {
       const cost = staminaCost(t.key, g);
-      const chosen = BATTLE.freeChoice === t.key ? " chosen" : "";
+      const chosen = used[t.key] ? " chosen" : "";
       const costLbl = t.key === "charge" ? `<span class="stcost gain">回战意</span>`
         : (cost <= 0 ? `<span class="stcost">免耗</span>` : `<span class="stcost">耗${cost}</span>`);
       return `<button class="tactic-btn ${t.type === "scheme" ? "scheme" : ""}${t.free ? " free" : ""}${chosen}" data-t="${t.key}" title="${t.desc}">
@@ -526,9 +526,9 @@
       const key = b.dataset.t;
       const t = TACTICS[key];
       const cost = staminaCost(key, g);
-      // 蓄力用于恢复战意，永不因战意不足而禁用；其余按战意消耗判定
-      let dis = !enabled || BATTLE.spectate || (key !== "charge" && BATTLE.p1.stam < cost);
-      if (t.free && freeUsed) dis = true;
+      // 蓄力/格挡不因战意不足而禁用；其余按战意消耗判定
+      let dis = !enabled || BATTLE.spectate || (cost > 0 && key !== "charge" && BATTLE.p1.stam < cost);
+      if (t.free && used[key]) dis = true;   // 该免费计策本回合已发动
       b.disabled = dis;
       b.onclick = () => (t.free ? chooseFree(key) : playerTactic(key));
     });
@@ -592,7 +592,7 @@
 
   // 轮换出招：决定/提示当前回合该谁出手
   function nextTurn() {
-    BATTLE.freeChoice = null;
+    BATTLE.freeUsed = {};
     const active = BATTLE.turn;
     const me = active === "p1" ? BATTLE.p1 : BATTLE.p2;
     const foe = active === "p1" ? BATTLE.p2 : BATTLE.p1;
@@ -625,17 +625,18 @@
     takeTurn(aiChoosePlan(a, f));
   }
 
-  // 手动：点免费计策(束缚/弱化)——立即发动并演出；本回合不可再发动计策，但仍可再出招
+  // 手动：点免费计策(束缚/弱化)——立即发动并演出；同回合两者皆可发动，各限一次，且仍可再出招
   async function chooseFree(key) {
     if (!BATTLE || BATTLE.busy || BATTLE.spectate) return;
     if (BATTLE.turn !== "p1" || BATTLE.p1.bound > 0) return;
-    if (BATTLE.freeChoice) return;                 // 每回合限一计
+    if (!BATTLE.freeUsed) BATTLE.freeUsed = {};
+    if (BATTLE.freeUsed[key]) return;              // 该计策本回合已发动
     const cost = staminaCost(key, BATTLE.p1.g);
     if (BATTLE.p1.stam < cost) { toast("战意不足"); return; }
     BATTLE.busy = true;
     const myTok = BATTLE.token; const stale = () => !BATTLE || BATTLE.token !== myTok;
     clearTimeout(BATTLE._autoTimer);
-    BATTLE.freeChoice = key;
+    BATTLE.freeUsed[key] = true;
     renderTactics(false);
     AudioSystem.sfx.select();
     // 立即结算并演出这条免费计策
@@ -647,13 +648,13 @@
     updateBars($("#f-left"), BATTLE.p1);
     updateBars($("#f-right"), BATTLE.p2);
     BATTLE.busy = false;
-    renderTactics(true);   // 主行动可继续；束缚/弱化已禁用
-    $("#battle-foot").textContent = `已发动【${TACTICS[key].name}】，请再选择出招`;
+    renderTactics(true);   // 主行动可继续；已发动的计策按钮已禁用
+    $("#battle-foot").textContent = `已发动【${TACTICS[key].name}】，可再施计或出招`;
   }
 
-  // 玩家选定「主行动」后结算本回合（免费计策若已发动则不再重复）
+  // 玩家选定「主行动」后结算本回合（免费计策已即时发动，不再重复）
   function playerTactic(mainKey) {
-    takeTurn({ free: null, main: mainKey });
+    takeTurn({ frees: [], main: mainKey });
   }
 
   // 结算「当前出手方」的一个回合
@@ -662,7 +663,7 @@
     const myTok = BATTLE.token;           // 该回合所属战斗；战斗被替换则中途作废
     const stale = () => !BATTLE || BATTLE.token !== myTok;
     BATTLE.busy = true;
-    BATTLE.freeChoice = null;
+    BATTLE.freeUsed = {};
     clearTimeout(BATTLE._autoTimer);
     renderTactics(false);
 
@@ -732,10 +733,16 @@
     }
     if (ev.type === "defend") {
       AudioSystem.sfx.guard();
-      Duel.setCharge(atk, true);
-      logLine(ev.text, cls);
-      await battleSleep(360);
-      Duel.setCharge(atk, false);
+      logLine(ev.text, ev.ok ? cls : "sys");
+      if (ev.ok) {
+        Duel.setCharge(atk, true);
+        updateBars($("#f-left"), BATTLE.p1);   // 格挡成功略增战意
+        updateBars($("#f-right"), BATTLE.p2);
+        await battleSleep(380);
+        Duel.setCharge(atk, false);
+      } else {
+        await battleSleep(320);
+      }
       return;
     }
     if (ev.type === "bound") {

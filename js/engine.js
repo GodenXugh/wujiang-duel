@@ -6,7 +6,7 @@
 
 const TACTICS = {
   fierce:  { key: "fierce",  name: "猛攻", icon: "⚔️", desc: "全力进攻，伤害高、战意消耗大",               stam: 20, type: "atk" },
-  normal:  { key: "normal",  name: "普攻", icon: "🗡️", desc: "稳健出招，攻守平衡，伤害低于猛攻",           stam: 8,  type: "atk" },
+  normal:  { key: "normal",  name: "普攻", icon: "🗡️", desc: "稳健出招，不耗战意，伤害低",                 stam: 0,  type: "atk" },
   defend:  { key: "defend",  name: "格挡", icon: "🛡️", desc: "凝神防御（不耗战意、不攻击）：大幅减免下一次受到的伤害", stam: 0,  type: "guard" },
   strategy:{ key: "strategy",name: "智谋", icon: "🧠", desc: "以智取胜（智力伤害），克制「格挡」，受「猛攻」压制", stam: 7, type: "atk" },
   // —— 计策（智力系）：成功率与效果均取决于双方「智力」 ——
@@ -33,11 +33,11 @@ function rand(min, max) { return Math.random() * (max - min) + min; }
 function computeDamage(attacker, defender, atkTactic, defTactic, charged) {
   const a = attacker.g, d = defender.g;
   let base;
-  // 主属性：智谋用智力，其余用武力；统帅辅助攻势
+  // 主属性：智谋用智力；猛攻/普攻纯取决于攻击方「武力」（减伤再由守方「统帅」决定）
   if (atkTactic === "strategy") {
     base = a.wu * 0.30 + a.zhi * 0.80;
   } else {
-    base = a.wu * 0.92 + a.tong * 0.18;
+    base = a.wu * 1.0;
   }
   // 相克倍率
   const counter = (COUNTER[atkTactic] && COUNTER[atkTactic][defTactic]) || 1.0;
@@ -52,8 +52,8 @@ function computeDamage(attacker, defender, atkTactic, defTactic, charged) {
   const luck = rand(0.82, 1.18);
   // 被「弱化」计策削弱的攻击力
   const atkMul = attacker.atkMul || 1;
-  // 招式威力：普攻明显弱于猛攻，拉开两者差距
-  const power = ({ fierce: 1.0, normal: 0.7, defend: 1.0, strategy: 1.0, charge: 1.0 })[atkTactic] || 1;
+  // 招式威力：普攻显著弱于猛攻
+  const power = ({ fierce: 1.0, normal: 0.5, strategy: 1.0 })[atkTactic] || 1;
 
   let dmg = (base * 0.32) * counter * mitigation * critMul * luck * atkMul * power;
 
@@ -75,6 +75,11 @@ function schemeSuccess(self, foe, scheme) {
   const dz = self.g.zhi - foe.g.zhi;
   const base = { bind: 0.30, weaken: 0.45, heal: 0.62, charge: 0.66 }[scheme] || 0.4;
   return Math.max(0.12, Math.min(0.94, base + dz / 220));
+}
+
+// 格挡成功率：己方「统帅」对抗对方「武力」
+function guardSuccess(self, foe) {
+  return Math.max(0.15, Math.min(0.95, 0.45 + (self.g.tong - foe.g.wu) / 200));
 }
 
 // 执行一条计策，返回事件对象（命中与否、效果文本等）
@@ -144,21 +149,21 @@ function aiChooseTactic(self, foe) {
   return "defend";
 }
 
-// AI 的整套行动：一个可选的免费计策(束缚/弱化) + 一个主行动
+// AI 的整套行动：可发动 束缚/弱化（互不排斥，各限一次）+ 一个主行动
 // 计算机控制的武将同样会用计；用计后仍正常出招
 function aiChoosePlan(self, foe) {
   const g = self.g;
-  let free = null;
-  // 留足战意给主攻后，智将才考虑用计
-  const room = cost => self.stam >= cost + 8;
-  if (g.zhi >= 78 && (foe.bound || 0) <= 0 && (foe.boundAdd || 0) <= 0 &&
+  const frees = [];
+  const room = cost => self.stam >= cost + 6;   // 留些战意给主攻
+  if (g.zhi >= 78 && (foe.bound || 0) <= 0 &&
       room(staminaCost("bind", g)) && Math.random() < 0.22) {
-    free = "bind";
-  } else if (g.zhi >= 70 && (foe.atkMul || 1) >= 1 &&
-      room(staminaCost("weaken", g)) && Math.random() < 0.26) {
-    free = "weaken";
+    frees.push("bind");
   }
-  return { free, main: aiChooseTactic(self, foe) };
+  if (g.zhi >= 70 && (foe.atkMul || 1) >= 1 &&
+      room(staminaCost("weaken", g)) && Math.random() < 0.26) {
+    frees.push("weaken");
+  }
+  return { frees, main: aiChooseTactic(self, foe) };
 }
 
 // 创建一个战斗单位
@@ -178,15 +183,16 @@ function makeFighter(general) {
   };
 }
 
-// 将参数规整为行动计划：{ free: 束缚/弱化或null, main: 主行动 }
+// 将参数规整为行动计划：{ frees: [束缚/弱化...], main: 主行动 }
 function normPlan(p) {
-  if (p == null) return { free: null, main: "normal" };
+  if (p == null) return { frees: [], main: "normal" };
   if (typeof p === "string") {
-    // 兼容旧用法：若传入的是免费计策，归入 free；否则为主行动
     const t = TACTICS[p];
-    return t && t.free ? { free: p, main: "normal" } : { free: null, main: p };
+    return t && t.free ? { frees: [p], main: "normal" } : { frees: [], main: p };
   }
-  return { free: p.free || null, main: p.main || "normal" };
+  let frees = p.frees || (p.free ? [p.free] : []);
+  frees = [...new Set(frees.filter(k => TACTICS[k] && TACTICS[k].free))];  // 去重、仅保留免费计策
+  return { frees, main: p.main || "normal" };
 }
 
 // 统帅决定先手：返回先出招的一方 "p1" / "p2"
@@ -217,26 +223,31 @@ function resolveTurn(attacker, defender, plan, who) {
     return events;
   }
 
-  // 免费计策（束缚/弱化）：发动后仍可出招
-  const fk = plan.free;
-  if (fk && TACTICS[fk] && TACTICS[fk].free) {
+  // 免费计策（束缚/弱化）：同回合两者皆可发动，各限一次；发动后仍可出招
+  for (const fk of plan.frees) {
     const cost = staminaCost(fk, attacker.g);
-    if (attacker.stam >= cost) {
-      attacker.stam -= cost;
-      const ok = Math.random() < schemeSuccess(attacker, defender, TACTICS[fk].scheme);
-      events.push(applyScheme(o, TACTICS[fk].scheme, ok));
-    }
+    if (attacker.stam < cost) continue;
+    attacker.stam -= cost;
+    const ok = Math.random() < schemeSuccess(attacker, defender, TACTICS[fk].scheme);
+    events.push(applyScheme(o, TACTICS[fk].scheme, ok));
   }
 
   // 主行动
   const mk = plan.main || "normal";
   const tac = TACTICS[mk] || TACTICS.normal;
   if (tac.type === "guard") {
-    // 格挡：不攻击、不耗战意，进入防御姿态，大幅减免下一次受击（仅凭 guard，不叠相克）
-    attacker.guard = true;
+    // 格挡：不攻击、不耗战意。成败取决于「己方统帅 vs 对方武力」；成功才架起防御并略增战意
     attacker.stance = "normal";
-    events.push({ who, type: "defend", attacker: attacker.g.name,
-      text: `${attacker.g.name} 凝神格挡，下一次受击将大幅减伤！` });
+    if (Math.random() < guardSuccess(attacker, defender)) {
+      attacker.guard = true;
+      const gain = Math.round(6 + attacker.g.tong * 0.04);
+      attacker.stam = Math.min(100, attacker.stam + gain);
+      events.push({ who, type: "defend", ok: true, attacker: attacker.g.name, gain,
+        text: `${attacker.g.name} 格挡成功，下一次受击将大幅减伤，战意 +${gain}！` });
+    } else {
+      events.push({ who, type: "defend", ok: false, attacker: attacker.g.name,
+        text: `${attacker.g.name} 格挡失手，未能架起防御！` });
+    }
   } else if (tac.type === "scheme") {
     // 占用行动的计策：蓄力(charge) / 疗伤(heal)；蓄力恢复战意故不扣战意
     if (mk !== "charge") { attacker.stam = Math.max(0, attacker.stam - staminaCost(mk, attacker.g)); }
@@ -248,8 +259,8 @@ function resolveTurn(attacker, defender, plan, who) {
     const wasCharged = attacker.charged; attacker.charged = false;
     // 相克对象取守方最近一次姿态
     const res = computeDamage(attacker, defender, mk, defender.stance || "normal", wasCharged);
-    // 守方处于格挡：大幅减伤并消耗格挡
-    if (defender.guard) { res.dmg = Math.max(1, Math.round(res.dmg * 0.3)); res.guarded = true; defender.guard = false; }
+    // 守方处于格挡：大幅减伤并消耗格挡；但「智谋」可无视格挡
+    if (defender.guard && mk !== "strategy") { res.dmg = Math.max(1, Math.round(res.dmg * 0.3)); res.guarded = true; defender.guard = false; }
     defender.hp = Math.max(0, defender.hp - res.dmg);
     attacker.stance = mk;
     let text = buildHitText(attacker.g.name, defender.g.name, mk, res, wasCharged);
@@ -315,5 +326,5 @@ function autoBattle(g1, g2, maxTurns = 160) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { TACTICS, makeFighter, resolveTurn, firstMover, aiChooseTactic, aiChoosePlan, autoBattle, computeDamage, staminaCost, staminaRegen, schemeSuccess, applyScheme };
+  module.exports = { TACTICS, makeFighter, resolveTurn, firstMover, aiChooseTactic, aiChoosePlan, autoBattle, computeDamage, staminaCost, staminaRegen, schemeSuccess, guardSuccess, applyScheme };
 }
