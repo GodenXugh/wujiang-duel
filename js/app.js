@@ -812,7 +812,7 @@
    *  阵营大战（自动模拟 100 vs 100）
    * ============================================================ */
   const War = {
-    running: false, mode: "fast", gen: 0,
+    running: false, mode: "fast", gen: 0, detached: false,
     // 中止进行中的大战：作废循环、解开等待的观战对决、复位界面
     abort() {
       this.gen++;
@@ -820,6 +820,25 @@
       this.running = false;
       $("#war-start").disabled = false;
       if (BATTLE && BATTLE.spectate) { BATTLE.busy = false; if (BATTLE.abortResolve) BATTLE.abortResolve(); }
+    },
+    // 详情观战中点返回：脱离单挑画面，但本场大战在战报界面继续（其余各阵改为快捷推进）
+    detach() {
+      if (!BATTLE || !BATTLE.spectate || BATTLE._detached) return;
+      BATTLE._detached = true;
+      this.detached = true;
+      // 立即从当前状态续算完这场对决，并交给等待中的循环，使大战无缝继续
+      const p1 = BATTLE.p1, p2 = BATTLE.p2;
+      let guard = 0;
+      while (p1.hp > 0 && p2.hp > 0 && guard++ < 300) {
+        BATTLE.round++;
+        resolveRound(p1, p2, aiChooseTactic(p1, p2), aiChooseTactic(p2, p1));
+      }
+      BATTLE.token = ++battleToken;     // 作废在飞的回合动画，避免污染后续
+      BATTLE.busy = false;
+      clearTimeout(BATTLE._autoTimer);
+      const winner = p1.hp >= p2.hp ? p1.g : p2.g;
+      const loser = winner === p1.g ? p2.g : p1.g;
+      if (BATTLE.onWin) BATTLE.onWin(winner, loser);
     },
     setMode(m) {
       this.mode = m;
@@ -836,6 +855,7 @@
       if (this.running) return;
       this.running = true;
       this.aborted = false;
+      this.detached = false;
       const myGen = ++this.gen;            // 本场大战的代号，被中止/重开后作废旧循环
       $("#war-start").disabled = true;
       $("#war-log").innerHTML = "";
@@ -864,7 +884,9 @@
 
         // 详情模式：切到经典单挑画面，自动演完整场；快捷模式：直接结算
         let res;
-        if (this.mode === "detail") {
+        // 详情模式且未脱离观战：进入经典单挑画面演完整场；否则（快捷/已返回）直接结算
+        const showDuel = this.mode === "detail" && !this.detached;
+        if (showDuel) {
           res = await autoPlayBattle(cnFighter, jpFighter, {
             title: `阵营大战 · 第 ${battleNo} 阵`,
             intro: `${cnFighter.name}（${sideName(cnFighter.side)}） 对阵 ${jpFighter.name}（${sideName(jpFighter.side)}）`,
@@ -891,8 +913,8 @@
 
         $("#war-cn").textContent = cn.length - cnIdx;
         $("#war-jp").textContent = jp.length - jpIdx;
-        if (this.mode !== "detail") AudioSystem.sfx.hit();
-        await sleep(this.mode === "detail" ? 220 : (hero ? 90 : 140));
+        if (!showDuel) AudioSystem.sfx.hit();
+        await sleep(showDuel ? 220 : (this.detached ? 80 : (hero ? 90 : 140)));
       }
       if (this.gen !== myGen) return;     // 已被新的大战接管，勿动共享状态
       if (this.aborted) { this.running = false; $("#war-start").disabled = false; return; }
@@ -1610,11 +1632,12 @@
     // 返回（仅在战斗进行中且正处于战斗画面时才阻止）
     $$("[data-back]").forEach(b => b.onclick = () => {
       const onBattle = $("#screen-battle").classList.contains("active");
-      // 阵营大战详情观战：中止本场大战并退回阵营大战界面（而非主菜单）
+      // 阵营大战详情观战：脱离单挑画面退回战报界面，但本场大战继续推进（非中止）
       if (onBattle && BATTLE && BATTLE.spectate) {
-        War.abort();
+        War.detach();
         closeOverlay();
-        War.open();
+        showScreen("war");
+        $("#war-status").textContent = "已返回战报，阵营大战继续进行中…";
         return;
       }
       if (BATTLE && BATTLE.busy && onBattle) return;

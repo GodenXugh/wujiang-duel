@@ -1,5 +1,5 @@
 /* Service Worker — 离线缓存，使游戏可作为 PWA 安装并离线运行 */
-const CACHE = "wujiang-v14";
+const CACHE = "wujiang-v15";
 const ASSETS = [
   "./",
   "./index.html",
