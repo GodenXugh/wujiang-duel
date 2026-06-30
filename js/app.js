@@ -52,23 +52,18 @@
   }
   const DIMS = [["ti", "体力"], ["wu", "武力"], ["tong", "统帅"], ["zhi", "智力"], ["zheng", "政治"], ["mei", "魅力"]];
   function sumStats(g) { return g.ti + g.wu + g.tong + g.zhi + g.zheng + g.mei; }
-  function overallScore(g) { return sumStats(g) / 6; }
-  function overallLetter(g) { return rateLetter(Math.round(overallScore(g))); }
   function gradeChip(v) { const r = rateLetter(v); return `<span class="g grade-${r}">${r}</span>`; }
-  // 武将评级：以平均分为基础，但单项越突出(A及以上)越加分，体现「一招鲜」
+  // 武将评分 = 六维之和 + 单项突出加成（A 不额外加分，S +10，SS +20）
   function ratingScore(g) {
-    let s = overallScore(g); // 六维平均为基底
+    let s = sumStats(g);
     DIMS.forEach(([k]) => {
       const v = g[k];
-      if (v >= 100) s += 9;        // SS 单项
-      else if (v >= 95) s += 6;    // S
-      else if (v >= 90) s += 4;    // A：明显加评级依据分
-      else if (v >= 80) s += 1.5;  // B
+      if (v >= 100) s += 20;       // 单项 SS
+      else if (v >= 95) s += 10;   // 单项 S
+      // A 及以下不额外加分
     });
     return s;
   }
-  function warriorRating(g) { return rateLetter(Math.round(ratingScore(g))); }
-  function ratingChip(g) { const r = warriorRating(g); return `<span class="g grade-${r}">${r}</span>`; }
   const GRADE_COLOR = { SS: "#f4c430", S: "#ff4d3d", A: "#ff9020", B: "#3b9aff", C: "#46c357", D: "#c7923f", E: "#b0705a" };
   function gradeColor(v) { return GRADE_COLOR[rateLetter(v)]; }
 
@@ -128,7 +123,7 @@
       <div style="font-size:13px;color:#8a6d3b;margin-top:2px">${g.title || ''}</div>
       <div class="wdesc">${g.intro || ''}</div>
       <div class="radar-wrap">${radarSVG(g)}</div>
-      <div class="overall-line">六维总分 <b class="ov-sum">${sumStats(g)}</b> · 武将评级 ${ratingChip(g)}</div>
+      <div class="overall-line">武将评分 <b class="ov-sum">${ratingScore(g)}</b> <span class="ov-num">(六维 ${sumStats(g)} + 突出加成 ${ratingScore(g) - sumStats(g)})</span></div>
       <div class="stat-rows">${statRow('体力', g.ti)}${statRow('武力', g.wu)}${statRow('统帅', g.tong)}${statRow('智力', g.zhi)}${statRow('政治', g.zheng)}${statRow('魅力', g.mei)}</div>
       <div class="btns">
         ${opts.pickable ? `<button class="btn-primary" id="detail-pick">选他出战</button>` : ''}
@@ -274,7 +269,7 @@
     const g = fighter.g;
     $(".favatar", el).textContent = avatarChar(g.name);
     $(".fname", el).textContent = g.name;
-    $(".ftotal", el).innerHTML = `总评 <b>${sumStats(g)}</b> ${ratingChip(g)}`;
+    $(".ftotal", el).innerHTML = `武将评分 <b>${ratingScore(g)}</b>`;
     // 头像/姓名右侧的五维（评级 + 数值彩条 + 数值；体力另以下方血条呈现）
     $(".fstats", el).innerHTML = DIMS.filter(([k]) => k !== "ti").map(([k, label]) =>
       `<div class="fs-row"><span class="fs-lbl">${label[0]}</span>` +
@@ -1170,7 +1165,7 @@
             // 轮到自选武将：手动单挑
             const r = await this.playManualMatch(a, b, `世界杯·${grp.name}组`);
             winnerId = r.winner.id; aHp = r.finalHp[0]; bHp = r.finalHp[1];
-            if (winnerId === -1) this.cupExp += RPG.winExp(sumStats(RPG.heroGeneral()), sumStats(a.id === -1 ? b : a));
+            if (winnerId === -1) this.cupExp += RPG.winExp(ratingScore(RPG.heroGeneral()), ratingScore(a.id === -1 ? b : a));
           } else {
             const res = autoBattle(a, b);
             aHp = res.p1.g.id === a.id ? res.p1.hp : res.p2.hp;
@@ -1259,7 +1254,7 @@
           if (m.a.id === -1 || m.b.id === -1) {
             const r = await this.playManualMatch(m.a, m.b, `世界杯·${rname}`);
             m.winner = r.winner; m.finalHp = r.finalHp;
-            if (r.winner.id === -1) this.cupExp += RPG.winExp(sumStats(RPG.heroGeneral()), sumStats(m.a.id === -1 ? m.b : m.a));
+            if (r.winner.id === -1) this.cupExp += RPG.winExp(ratingScore(RPG.heroGeneral()), ratingScore(m.a.id === -1 ? m.b : m.a));
             this.koReveal = gi + 1; this.render(); this.scrollTree(); await sleep(200);
           } else {
             const res = autoBattle(m.a, m.b);
@@ -1316,7 +1311,7 @@
       if (this.champion.id === -1) return { label: "夺冠", exp: 260 };
       // 是否进入淘汰赛
       const advanced = this.groups.some(g => g.adv.some(a => a.id === -1));
-      if (!advanced) return { label: "小组未出线", exp: 35 };
+      if (!advanced) return { label: "小组未出线", exp: 0 }; // 未出线无晋级奖励
       let lastRound = -1;
       for (let r = 0; r < this.koRounds.length; r++) {
         for (const m of this.koRounds[r].matches) {
@@ -1472,7 +1467,7 @@
               <span class="rr-track"><span class="rr-bar" style="width:${Math.min(100, v / 1.2)}%;background:${gradeColor(v)}"></span></span>
               <b>${v}</b>${gradeChip(v)}</div>`;
           }).join("")}
-            <div class="rr-sum">基线总分 <b>${DIMS.reduce((s, [k]) => s + r.base[k], 0)}</b> · 可分配加点 <b style="color:var(--cn-gold)">${r.points}</b></div>
+            <div class="rr-sum">基线评分 <b>${ratingScore(r.base)}</b> · 可分配加点 <b style="color:var(--cn-gold)">${r.points}</b></div>
           </div>
           <div class="rpg-create-btns">
             <button class="cup-go" id="rpg-reroll">🎲 重新随机</button>
@@ -1499,11 +1494,11 @@
     },
     renderPickGrid() {
       const kw = ($("#rpg-search").value || "").trim();
-      let arr = DB.list.slice().sort((a, b) => sumStats(b) - sumStats(a));
+      let arr = DB.list.slice().sort((a, b) => ratingScore(b) - ratingScore(a));
       if (kw) arr = arr.filter(g => g.name.includes(kw));
       $("#rpg-pick-grid").innerHTML = arr.slice(0, 80).map(g =>
         `<div class="card ${g.side}" data-id="${g.id}"><div class="avatar">${avatarChar(g.name)}</div>
-          <div class="cname">${g.name}</div><div class="cwu">总 ${sumStats(g)}</div></div>`).join("");
+          <div class="cname">${g.name}</div><div class="cwu">评分 ${ratingScore(g)}</div></div>`).join("");
       $$("#rpg-pick-grid .card").forEach(c => c.onclick = () => {
         const g = DB.get(+c.dataset.id);
         const base = {}; DIMS.forEach(([k]) => base[k] = g[k]);
@@ -1543,9 +1538,9 @@
         <div class="rpg-overview">
           <div class="rpg-radar">${radarSVG(this.heroGeneral(), 190)}</div>
           <div class="rpg-total">
-            <div class="rt-lbl">六维总分</div>
-            <div class="rt-num">${sum}</div>
-            <div class="rt-grade">武将评级 ${ratingChip(this.heroGeneral())}</div>
+            <div class="rt-lbl">武将评分</div>
+            <div class="rt-num">${ratingScore(this.heroGeneral())}</div>
+            <div class="rt-grade">六维 ${sum} + 突出 ${ratingScore(this.heroGeneral()) - sum}</div>
           </div>
         </div>
         <div class="rpg-points">可分配加点：<b>${c.points}</b> ${c.points > 0 ? '（点 ＋ 分配）' : ''}</div>
@@ -1587,15 +1582,15 @@
       const opp = clone(pool[randInt(0, pool.length - 1)]);
       startClassicBattle(this.heroGeneral(), opp, false, true);
     },
-    // 单挑获胜经验：胜过总评更高者按差值比例大增，胜过更低者微增
-    winExp(heroSum, oppSum) {
-      const diff = oppSum - heroSum;
-      if (diff > 0) return 40 + Math.round(diff / heroSum * 600);
+    // 单挑获胜经验：以「武将评分」比较，胜过评分更高者按差值比例大增，胜过更低者微增
+    winExp(heroScore, oppScore) {
+      const diff = oppScore - heroScore;
+      if (diff > 0) return 40 + Math.round(diff / heroScore * 600);
       return Math.max(8, 20 + Math.round(diff / 25));
     },
     onBattleEnd(heroWon, opp) {
       const c = this.char;
-      const heroSum = sumStats(this.heroGeneral()), oppSum = sumStats(opp);
+      const heroSum = ratingScore(this.heroGeneral()), oppSum = ratingScore(opp);
       const diff = oppSum - heroSum;   // >0 表示对手更强
       let gain, tag = "";
       if (heroWon) {
@@ -1614,7 +1609,7 @@
         <h1>${heroWon ? '历练胜利' : '虽败犹荣'}</h1>
         <div class="winner-av" style="background:${bg}">${avatarChar(c.name)}</div>
         <div class="wname">${c.name}</div>
-        <div class="wdesc">${heroWon ? '击败' : '不敌'} ${opp.name}（总评 ${oppSum} / 你 ${heroSum}）${tag}<br>获得经验 <b style="color:var(--cn-red)">+${gain}</b>
+        <div class="wdesc">${heroWon ? '击败' : '不敌'} ${opp.name}（武将评分 ${oppSum} / 你 ${heroSum}）${tag}<br>获得经验 <b style="color:var(--cn-red)">+${gain}</b>
           ${lvUp ? `<br>🎉 升级 ${lvUp} 级！获得加点 <b style="color:var(--cn-red)">+${lvUp * 1}</b>` : ''}</div>
         <div class="btns">
           <button class="btn-primary" id="rpg-again">再历练</button>
@@ -1708,7 +1703,7 @@
 
   const DBUI = {
     side: "cn",
-    sort: { key: "overall", dir: -1 },   // 默认按总评从高到低
+    sort: { key: "rating", dir: -1 },   // 默认按武将评分从高到低
     open() { this.render(); showScreen("db"); },
     setSide(side) {
       this.side = side;
@@ -1729,21 +1724,19 @@
       arr.sort((a, b) => {
         let va, vb;
         if (key === "name") return a.name.localeCompare(b.name, "zh") * dir;
-        if (key === "overall") { va = overallScore(a); vb = overallScore(b); }
-        else if (key === "rating") { va = ratingScore(a); vb = ratingScore(b); }
+        if (key === "rating") { va = ratingScore(a); vb = ratingScore(b); }
         else { va = a[key]; vb = b[key]; }
         return (va - vb) * dir;
       });
       const arrow = k => this.sort.key === k ? (this.sort.dir > 0 ? " ▲" : " ▼") : "";
       const th = (k, label) => `<th data-sort="${k}" class="${this.sort.key === k ? 'sorted' : ''}">${label}${arrow(k)}</th>`;
-      const head = `<tr>${th("name", "姓名")}${DIMS.map(([k, l]) => th(k, l[0])).join("")}${th("overall", "总分")}${th("rating", "评级")}<th>操作</th></tr>`;
+      const head = `<tr>${th("name", "姓名")}${DIMS.map(([k, l]) => th(k, l[0])).join("")}${th("rating", "评分")}<th>操作</th></tr>`;
       const body = arr.map(g => {
         const cells = DIMS.map(([k]) => `<td class="num gt-${rateLetter(g[k])}">${g[k]}</td>`).join("");
         return `<tr data-id="${g.id}">
           <td class="dt-name ${g.side}"><span class="dt-dot"></span>${g.name}</td>
           ${cells}
-          <td class="dt-total">${sumStats(g)}</td>
-          <td class="dt-rating">${ratingChip(g)}</td>
+          <td class="dt-total">${ratingScore(g)}</td>
           <td class="dt-act">
             <button class="db-view" data-act="view">详</button>
             <button class="db-edit" data-act="edit">改</button>
