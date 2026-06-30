@@ -1283,14 +1283,18 @@
     },
 
     // 手动单挑一场（用于世界杯英雄场），resolve 出胜者与终局体力
-    playManualMatch(g1, g2, title) {
+    // 始终让自选武将(英雄)落在左侧(p1)由玩家操控，再把体力按对阵(a,b)顺序还原
+    playManualMatch(a, b, title) {
+      const heroIsB = b.id === -1;           // 英雄在对阵右侧 → 入场时交换到左侧
+      const left = heroIsB ? b : a, right = heroIsB ? a : b;
       return new Promise(res => {
-        startClassicBattle(g1, g2, false, false);
+        startClassicBattle(left, right, false, false);
         $("#battle-title").textContent = title || "世界杯";
         BATTLE.cupResolve = () => {
           const winner = BATTLE.p1.hp > 0 ? BATTLE.p1.g : BATTLE.p2.g;
-          const fa = Math.max(0, Math.round(BATTLE.p1.hp)), fb = Math.max(0, Math.round(BATTLE.p2.hp));
-          res({ winner, finalHp: [fa, fb] });
+          const hL = Math.max(0, Math.round(BATTLE.p1.hp)), hR = Math.max(0, Math.round(BATTLE.p2.hp));
+          // 还原为对阵 (a,b) 顺序：若交换过，则 a=右、b=左
+          res({ winner, finalHp: heroIsB ? [hR, hL] : [hL, hR] });
         };
       });
     },
