@@ -55,6 +55,20 @@
   function overallScore(g) { return sumStats(g) / 6; }
   function overallLetter(g) { return rateLetter(Math.round(overallScore(g))); }
   function gradeChip(v) { const r = rateLetter(v); return `<span class="g grade-${r}">${r}</span>`; }
+  // 武将评级：以平均分为基础，但单项越突出(A及以上)越加分，体现「一招鲜」
+  function ratingScore(g) {
+    let s = overallScore(g); // 六维平均为基底
+    DIMS.forEach(([k]) => {
+      const v = g[k];
+      if (v >= 100) s += 9;        // SS 单项
+      else if (v >= 95) s += 6;    // S
+      else if (v >= 90) s += 4;    // A：明显加评级依据分
+      else if (v >= 80) s += 1.5;  // B
+    });
+    return s;
+  }
+  function warriorRating(g) { return rateLetter(Math.round(ratingScore(g))); }
+  function ratingChip(g) { const r = warriorRating(g); return `<span class="g grade-${r}">${r}</span>`; }
   const GRADE_COLOR = { SS: "#f4c430", S: "#ff4d3d", A: "#ff9020", B: "#3b9aff", C: "#46c357", D: "#c7923f", E: "#b0705a" };
   function gradeColor(v) { return GRADE_COLOR[rateLetter(v)]; }
 
@@ -114,7 +128,7 @@
       <div style="font-size:13px;color:#8a6d3b;margin-top:2px">${g.title || ''}</div>
       <div class="wdesc">${g.intro || ''}</div>
       <div class="radar-wrap">${radarSVG(g)}</div>
-      <div class="overall-line">六维总分 <b class="ov-sum">${sumStats(g)}</b> <span class="ov-num">(均 ${Math.round(overallScore(g))})</span></div>
+      <div class="overall-line">六维总分 <b class="ov-sum">${sumStats(g)}</b> · 武将评级 ${ratingChip(g)}</div>
       <div class="stat-rows">${statRow('体力', g.ti)}${statRow('武力', g.wu)}${statRow('统帅', g.tong)}${statRow('智力', g.zhi)}${statRow('政治', g.zheng)}${statRow('魅力', g.mei)}</div>
       <div class="btns">
         ${opts.pickable ? `<button class="btn-primary" id="detail-pick">选他出战</button>` : ''}
@@ -260,7 +274,7 @@
     const g = fighter.g;
     $(".favatar", el).textContent = avatarChar(g.name);
     $(".fname", el).textContent = g.name;
-    $(".ftotal", el).innerHTML = `总评 <b>${sumStats(g)}</b>`;
+    $(".ftotal", el).innerHTML = `总评 <b>${sumStats(g)}</b> ${ratingChip(g)}`;
     // 头像/姓名右侧的五维（评级 + 数值彩条 + 数值；体力另以下方血条呈现）
     $(".fstats", el).innerHTML = DIMS.filter(([k]) => k !== "ti").map(([k, label]) =>
       `<div class="fs-row"><span class="fs-lbl">${label[0]}</span>` +
@@ -807,6 +821,7 @@
     const winner = BATTLE.p1.hp > 0 ? BATTLE.p1.g : BATTLE.p2.g;
     const loser = winner === BATTLE.p1.g ? BATTLE.p2.g : BATTLE.p1.g;
     if (!BATTLE.spectate) AudioSystem.sfx.victory();   // 阵营观战由 War 统一收尾，避免逐场喧闹
+    if (BATTLE.cupResolve) { const r = BATTLE.cupResolve; BATTLE.cupResolve = null; showScreen("cup"); r(); return; }
     if (BATTLE.rpg) { RPG.onBattleEnd(BATTLE.p1.hp > 0, BATTLE.opp); return; }
     if (BATTLE.onWin) { BATTLE.onWin(winner, loser); return; }
 
@@ -842,8 +857,11 @@
       this.hero = clone(hero);
       this.streak = 0;
       this.rpg = !!rpg;
-      // 对手池：所有其他武将，按武力升序（越打越强）
-      this.pool = DB.list.filter(g => g.id !== hero.id).sort((a, b) => a.wu - b.wu);
+      // 对手池：大致由弱到强，但加入随机扰动，使每次顺序都不同
+      this.pool = DB.list.filter(g => g.id !== hero.id)
+        .map(g => ({ g, key: g.wu + (Math.random() - 0.5) * 60 }))
+        .sort((a, b) => a.key - b.key)
+        .map(x => x.g);
       this.next();
     },
     next() {
@@ -1099,7 +1117,7 @@
     GROUP_NAMES: "ABCDEFGH".split(""),
 
     open() {
-      this.stage = "setup"; this.rpgMode = false; this.fight = null;
+      this.stage = "setup"; this.rpgMode = false; this.fight = null; this.busy = false;
       $("#cup-setup").style.display = "";
       $("#cup-content").innerHTML = "";
       $$(".cup-size").forEach(b => b.classList.toggle("active", +b.dataset.size === this.size));
@@ -1132,6 +1150,7 @@
       }
       this.koRounds = []; this.koOffsets = []; this.champion = null;
       this.grpReveal = null; this.grpActive = -1; this.koReveal = 0; this.koActive = -1;
+      this.cupExp = 0;   // 本届世界杯累计的「单挑获胜经验」
       this.stage = "drawn";
       this.render();
     },
@@ -1146,12 +1165,21 @@
         const pairs = [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]];
         for (const [i, j] of pairs) {
           const a = grp.teams[i], b = grp.teams[j];
-          const res = autoBattle(a, b);
+          let winnerId, aHp, bHp;
+          if (this.rpgMode && (a.id === -1 || b.id === -1)) {
+            // 轮到自选武将：手动单挑
+            const r = await this.playManualMatch(a, b, `世界杯·${grp.name}组`);
+            winnerId = r.winner.id; aHp = r.finalHp[0]; bHp = r.finalHp[1];
+            if (winnerId === -1) this.cupExp += RPG.winExp(sumStats(RPG.heroGeneral()), sumStats(a.id === -1 ? b : a));
+          } else {
+            const res = autoBattle(a, b);
+            aHp = res.p1.g.id === a.id ? res.p1.hp : res.p2.hp;
+            bHp = res.p1.g.id === b.id ? res.p1.hp : res.p2.hp;
+            winnerId = res.winner.id;
+          }
           const sa = stat.get(a.id), sb = stat.get(b.id);
-          const aHp = res.p1.g.id === a.id ? res.p1.hp : res.p2.hp;
-          const bHp = res.p1.g.id === b.id ? res.p1.hp : res.p2.hp;
           sa.hp += Math.max(0, aHp); sb.hp += Math.max(0, bHp);
-          if (res.winner.id === a.id) { sa.w++; sb.l++; } else { sb.w++; sa.l++; }
+          if (winnerId === a.id) { sa.w++; sb.l++; } else { sb.w++; sa.l++; }
         }
         grp.table = [...stat.values()].sort((x, y) => y.w - x.w || y.hp - x.hp);
         grp.adv = grp.table.slice(0, 2).map(s => s.g);
@@ -1170,6 +1198,8 @@
         const g1 = this.groups[k], g2 = this.groups[k + 1];
         ko.push(g1.adv[0], g2.adv[1], g2.adv[0], g1.adv[1]);
       }
+      // RPG 模式：英雄场手动单挑，逐轮即时进行
+      if (this.rpgMode) { await this.runKnockoutRpg(ko); return; }
       // 预先算出全部结果（含逐回合体力序列）
       this.koRounds = []; this.koOffsets = [];
       let arr = ko, off = 0;
@@ -1209,6 +1239,60 @@
       AudioSystem.sfx.victory();
       this.busy = false; this.render();
       if (this.rpgMode) { this.rpgMode = false; RPG.onCupResult(this.heroPlacement()); }
+    },
+
+    // RPG 淘汰赛：逐轮即时，英雄场手动单挑、其余自动并演示体力
+    async runKnockoutRpg(initial) {
+      this.koRounds = []; this.koOffsets = [];
+      this.stage = "ko"; this.koReveal = 0; this.koActive = -1; this.champion = null; this.fight = null;
+      let arr = initial, off = 0;
+      while (arr.length > 1) {
+        const rname = this.roundName(arr.length);
+        const matches = [];
+        for (let i = 0; i < arr.length; i += 2) matches.push({ a: arr[i], b: arr[i + 1], winner: null });
+        this.koOffsets.push(off);
+        this.koRounds.push({ name: rname, matches });
+        this.render(); this.scrollTree();
+        const winners = [];
+        for (let mi = 0; mi < matches.length; mi++) {
+          const m = matches[mi], gi = off + mi;
+          if (m.a.id === -1 || m.b.id === -1) {
+            const r = await this.playManualMatch(m.a, m.b, `世界杯·${rname}`);
+            m.winner = r.winner; m.finalHp = r.finalHp;
+            if (r.winner.id === -1) this.cupExp += RPG.winExp(sumStats(RPG.heroGeneral()), sumStats(m.a.id === -1 ? m.b : m.a));
+            this.koReveal = gi + 1; this.render(); this.scrollTree(); await sleep(200);
+          } else {
+            const res = autoBattle(m.a, m.b);
+            m.winner = res.winner; m.finalHp = res.hpSeq[res.hpSeq.length - 1];
+            this.koActive = gi; this.fight = { a: m.a, b: m.b, aHp: res.startHp[0], bHp: res.startHp[1] };
+            this.render(); this.scrollTree(); await sleep(280);
+            for (let s = 1; s < res.hpSeq.length; s++) { this.fight.aHp = res.hpSeq[s][0]; this.fight.bHp = res.hpSeq[s][1]; this.updateFightHp(); AudioSystem.sfx.hit(); await sleep(150); }
+            await sleep(150);
+            this.koActive = -1; this.fight = null; this.koReveal = gi + 1; this.render(); this.scrollTree(); await sleep(120);
+          }
+          winners.push(m.winner);
+        }
+        off += matches.length;
+        arr = winners;
+      }
+      this.champion = arr[0];
+      this.stage = "done"; AudioSystem.sfx.victory();
+      this.busy = false; this.render();
+      this.rpgMode = false;
+      RPG.onCupResult(this.heroPlacement(), this.cupExp);
+    },
+
+    // 手动单挑一场（用于世界杯英雄场），resolve 出胜者与终局体力
+    playManualMatch(g1, g2, title) {
+      return new Promise(res => {
+        startClassicBattle(g1, g2, false, false);
+        $("#battle-title").textContent = title || "世界杯";
+        BATTLE.cupResolve = () => {
+          const winner = BATTLE.p1.hp > 0 ? BATTLE.p1.g : BATTLE.p2.g;
+          const fa = Math.max(0, Math.round(BATTLE.p1.hp)), fb = Math.max(0, Math.round(BATTLE.p2.hp));
+          res({ winner, finalHp: [fa, fb] });
+        };
+      });
     },
     matchByGi(gi) {
       for (let r = 0; r < this.koRounds.length; r++) {
@@ -1457,7 +1541,7 @@
           <div class="rpg-total">
             <div class="rt-lbl">六维总分</div>
             <div class="rt-num">${sum}</div>
-            <div class="rt-grade">${gradeChip(Math.round(overallScore(this.heroGeneral())))} 综合</div>
+            <div class="rt-grade">武将评级 ${ratingChip(this.heroGeneral())}</div>
           </div>
         </div>
         <div class="rpg-points">可分配加点：<b>${c.points}</b> ${c.points > 0 ? '（点 ＋ 分配）' : ''}</div>
@@ -1499,14 +1583,20 @@
       const opp = clone(pool[randInt(0, pool.length - 1)]);
       startClassicBattle(this.heroGeneral(), opp, false, true);
     },
+    // 单挑获胜经验：胜过总评更高者按差值比例大增，胜过更低者微增
+    winExp(heroSum, oppSum) {
+      const diff = oppSum - heroSum;
+      if (diff > 0) return 40 + Math.round(diff / heroSum * 600);
+      return Math.max(8, 20 + Math.round(diff / 25));
+    },
     onBattleEnd(heroWon, opp) {
       const c = this.char;
       const heroSum = sumStats(this.heroGeneral()), oppSum = sumStats(opp);
       const diff = oppSum - heroSum;   // >0 表示对手更强
       let gain, tag = "";
       if (heroWon) {
-        if (diff > 0) { gain = 40 + Math.round(diff / heroSum * 600); tag = "（以弱胜强，经验大增！）"; }
-        else { gain = Math.max(8, 20 + Math.round(diff / 25)); tag = "（击败较弱者，经验微增）"; }
+        gain = this.winExp(heroSum, oppSum);
+        tag = diff > 0 ? "（以弱胜强，经验大增！）" : "（击败较弱者，经验微增）";
       } else {
         gain = 10 + Math.round(Math.max(0, diff) / 30);
       }
@@ -1582,10 +1672,12 @@
         $("#rpg-r-hub").onclick = () => { closeOverlay(); showScreen("rpg"); this.renderHub(); };
       }, 600);
     },
-    onCupResult(placement) {
+    onCupResult(placement, cupWinExp) {
       const c = this.char;
       if (!placement) { showScreen("rpg"); this.renderHub(); return; }
-      const gain = placement.exp;
+      const winGain = Math.round(cupWinExp || 0);   // 各场单挑获胜累计经验
+      const bonus = placement.exp;                   // 按最终轮次的晋级奖励
+      const gain = winGain + bonus;
       c.exp += gain;
       let lvUp = 0;
       while (c.exp >= this.expNeed(c.level)) { c.exp -= this.expNeed(c.level); c.level++; c.points += 1; lvUp++; }
@@ -1596,7 +1688,9 @@
           <h1>世界杯 · ${placement.label}</h1>
           <div class="winner-av" style="background:${bg}">${avatarChar(c.name)}</div>
           <div class="wname">${c.name}</div>
-          <div class="wdesc">本届世界杯成绩：<b>${placement.label}</b><br>获得经验 <b style="color:var(--cn-red)">+${gain}</b>
+          <div class="wdesc">本届世界杯成绩：<b>${placement.label}</b><br>
+            单挑获胜经验 <b style="color:var(--cn-red)">+${winGain}</b> · 晋级奖励 <b style="color:var(--cn-red)">+${bonus}</b><br>
+            合计获得经验 <b style="color:var(--cn-red)">+${gain}</b>
             ${lvUp ? `<br>🎉 升级 ${lvUp} 级！获得加点 <b style="color:var(--cn-red)">+${lvUp * 1}</b>` : ''}</div>
           <div class="btns">
             <button class="btn-primary" id="rpg-cup-again">再战世界杯</button>
@@ -1632,18 +1726,20 @@
         let va, vb;
         if (key === "name") return a.name.localeCompare(b.name, "zh") * dir;
         if (key === "overall") { va = overallScore(a); vb = overallScore(b); }
+        else if (key === "rating") { va = ratingScore(a); vb = ratingScore(b); }
         else { va = a[key]; vb = b[key]; }
         return (va - vb) * dir;
       });
       const arrow = k => this.sort.key === k ? (this.sort.dir > 0 ? " ▲" : " ▼") : "";
       const th = (k, label) => `<th data-sort="${k}" class="${this.sort.key === k ? 'sorted' : ''}">${label}${arrow(k)}</th>`;
-      const head = `<tr>${th("name", "姓名")}${DIMS.map(([k, l]) => th(k, l[0])).join("")}${th("overall", "总分")}<th>操作</th></tr>`;
+      const head = `<tr>${th("name", "姓名")}${DIMS.map(([k, l]) => th(k, l[0])).join("")}${th("overall", "总分")}${th("rating", "评级")}<th>操作</th></tr>`;
       const body = arr.map(g => {
         const cells = DIMS.map(([k]) => `<td class="num gt-${rateLetter(g[k])}">${g[k]}</td>`).join("");
         return `<tr data-id="${g.id}">
           <td class="dt-name ${g.side}"><span class="dt-dot"></span>${g.name}</td>
           ${cells}
           <td class="dt-total">${sumStats(g)}</td>
+          <td class="dt-rating">${ratingChip(g)}</td>
           <td class="dt-act">
             <button class="db-view" data-act="view">详</button>
             <button class="db-edit" data-act="edit">改</button>
