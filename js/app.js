@@ -1539,12 +1539,12 @@
               <span class="rsm-lbl">武将评分</span>
               <span class="rsm-num">${ratingScore(this.heroGeneral())}</span>
               ${ratingChip(this.heroGeneral())}
+              <span class="rsm-points">可分配加点：<b>${c.points}</b>${c.points > 0 ? '（点 ＋ 分配）' : ''}</span>
               <span class="rsm-sub">六维 ${sum} + 突出 ${Math.round(ratingScore(this.heroGeneral()) - sum)}</span>
             </div>
             <div class="rpg-dims">${dims}</div>
           </div>
         </div>
-        <div class="rpg-points">可分配加点：<b>${c.points}</b> ${c.points > 0 ? '（点 ＋ 分配）' : ''}</div>
         <div class="rpg-actions">
           <button class="cup-go primary" id="rpg-train">⚔ 历练单挑</button>
           <button class="cup-go primary" id="rpg-gauntlet">🔥 车轮大战</button>
@@ -1556,6 +1556,12 @@
         </div>
         <div class="section-hint">历练 / 车轮 / 阵营 / 世界杯 均可获得经验，升级获得加点；战绩越好经验越多。</div>
       </div>`;
+      // 蜘蛛图外框高度与右侧（评分+加点+六维）总高度对齐；图形本身按宽度等比居中，不被拉伸变形
+      const sideEl = C.querySelector(".rpg-side"), radarEl = C.querySelector(".rpg-radar");
+      if (sideEl && radarEl) {
+        const h = Math.round(sideEl.getBoundingClientRect().height);
+        if (h > 0) radarEl.style.height = h + "px";
+      }
       $$(".rd-plus").forEach(b => b.onclick = () => this.allocate(b.dataset.k));
       $("#rpg-train").onclick = () => this.train();
       $("#rpg-gauntlet").onclick = () => this.gauntlet();
