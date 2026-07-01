@@ -441,6 +441,48 @@ html, body {
 .wr-row.cn .wr-name { color: #ff9a9a; } .wr-row.jp .wr-name { color: #9ab6ff; }
 .wr-row .wr-k { color: var(--cn-gold); font-weight: 700; font-family: "DotGothic16", monospace; }
 
+/* ---------- 组队大战 ---------- */
+.tw-board { display: flex; gap: 10px; margin: 4px 14px; }
+.tw-roster {
+  flex: 1; min-width: 0; background: rgba(0,0,0,.4); border: 1px solid rgba(212,175,55,.3);
+  border-radius: 10px; padding: 8px 10px; max-height: 300px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.tw-side-title { font-size: 14px; font-weight: 700; letter-spacing: 1px; margin-bottom: 2px; }
+.tw-side-title.cn { color: #ff9a9a; }
+.tw-side-title.jp { color: #9ab6ff; }
+.tw-unit { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.tw-unit.dead { opacity: .35; }
+.tw-avatar {
+  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, var(--cn-gold), #b8860b); color: #1a1410; font-weight: 900; font-size: 14px;
+}
+.tw-unit.dead .tw-avatar { background: #444; color: #999; }
+.tw-info { flex: 1; min-width: 0; }
+.tw-name { font-size: 13px; color: var(--paper); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tw-unit.dead .tw-name { text-decoration: line-through; }
+.tw-you { font-size: 10px; color: #1a1410; background: var(--cn-gold); border-radius: 6px; padding: 0 4px; margin-left: 3px; }
+.tw-track { height: 8px; border-radius: 4px; background: rgba(0,0,0,.5); overflow: hidden; margin: 2px 0; }
+.tw-fill { display: block; height: 100%; background: linear-gradient(90deg,#8bc34a,#4caf50); transition: width .4s; }
+.tw-unit.dead .tw-fill { background: #666; }
+.tw-num { font-size: 11px; color: #c9b890; font-family: "DotGothic16", monospace; }
+
+.tw-log {
+  margin: 8px 14px; height: 130px; overflow-y: auto; background: rgba(0,0,0,.4);
+  border-radius: 10px; padding: 8px 14px; font-size: 14px; line-height: 1.7;
+  border: 1px solid rgba(212,175,55,.2);
+}
+.tw-log .ln:first-child { margin-top: 0; }
+
+.tw-actions { margin: 0 14px 14px; background: rgba(0,0,0,.35); border: 2px solid rgba(212,175,55,.4); border-radius: 12px; padding: 10px 12px; }
+.tw-turn { font-size: 15px; color: #d8c79c; margin-bottom: 8px; }
+.tw-turn b { color: var(--cn-gold); }
+.tw-act-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.tw-act-row .cup-go { flex: 1 1 auto; min-width: 90px; }
+
+/* 组队大战·目标选择弹窗（复用 .result-card / .grid / .card 的视觉语言） */
+.tw-pick .grid { margin-top: 10px; max-height: 50vh; overflow-y: auto; }
+
 /* ---------- 数据库管理 ---------- */
 .db-toolbar { display: flex; gap: 8px; padding: 12px 14px; flex-wrap: wrap; }
 .db-toolbar button, .db-toolbar label {

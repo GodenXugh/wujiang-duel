@@ -342,6 +342,77 @@ function autoBattle(g1, g2, maxTurns = 160) {
   return { winner, loser, rounds: Math.ceil(t / 2), log, p1, p2, hpSeq, startHp: [g1.ti, g2.ti] };
 }
 
+/* ============================================================
+ *  组队大战 · 兵力系统
+ *  每名武将带兵出战：兵力上限看「统帅」，训练值(单兵质量)看「武力」，
+ *  征兵量看「魅力」；带兵攻击拼的是兵力（含质量加权），计谋成败/成效看双方「智力」，
+ *  挑唆成败看双方「魅力」，挑唆成功后转入真实单挑，败方连兵带将退场。
+ * ============================================================ */
+
+// 兵力上限：统帅 60→900　100→1500　120→1800
+function maxTroops(g) { return Math.round(g.tong * 15); }
+// 单兵训练值（战力倍率）：武力 60→0.96　100→1.27　120→1.42
+function troopQuality(g) { return 0.5 + g.wu / 130; }
+// 单次征兵量：魅力 60→106　100→150　120→172
+function recruitAmount(g) { return Math.round(40 + g.mei * 1.1); }
+
+// 创建一个「带兵单位」
+function makeTroopUnit(g, side) {
+  const cap = maxTroops(g);
+  return { g, side: side || g.side, troops: cap, maxTroops: cap, alive: true };
+}
+
+// 带兵攻击结算：返回双方兵力损失（不超过各自剩余兵力）
+function troopClash(atkUnit, defUnit) {
+  const atkPower = atkUnit.troops * troopQuality(atkUnit.g) * rand(0.85, 1.15);
+  const defPower = defUnit.troops * troopQuality(defUnit.g) * rand(0.85, 1.15);
+  const toDef = Math.min(defUnit.troops, Math.round(atkPower * 0.16));
+  const toAtk = Math.min(atkUnit.troops, Math.round(defPower * 0.08));
+  return { toDef, toAtk };
+}
+
+// 挑唆成功率：由双方「魅力」差决定
+function provokeSuccess(self, foe) {
+  return Math.max(0.15, Math.min(0.85, 0.4 + (self.g.mei - foe.g.mei) / 200));
+}
+
+// 团队计谋定义：成功率复用 schemeSuccess（双方智力差），效果幅度同样看双方智力差
+const TEAM_TACTICS = {
+  disrupt: { key: "disrupt", name: "乱其阵型", icon: "🌀", base: "weaken",
+    desc: "扰乱敌军阵型：成功率与效果均取决于双方智力，命中造成敌方兵力损失" },
+  ambush: { key: "ambush", name: "伏兵奇袭", icon: "🏹", base: "bind",
+    desc: "伺机设伏：成功率较低但命中造成更高的敌方兵力损失，取决于双方智力" },
+  rally: { key: "rally", name: "安抚军心", icon: "🚩", base: "heal",
+    desc: "鼓舞士气：为己方部队补充兵力，成效取决于自身智力" },
+};
+
+// 执行一次团队计谋，返回事件对象（含描述文本），unit 为施计方，target 为目标（rally 时 target=unit 自身）
+function applyTeamScheme(unit, target, key, ok) {
+  const t = TEAM_TACTICS[key], un = unit.g.name, tn = target.g.name;
+  if (!ok) {
+    return { ok: false, key, attacker: un, defender: tn,
+      text: `${un} 施展【${t.name}】，却被 ${tn} 识破，未能奏效。` };
+  }
+  if (key === "rally") {
+    const before = unit.troops;
+    const heal = Math.round(unit.maxTroops * (0.08 + unit.g.zhi / 900));
+    unit.troops = Math.min(unit.maxTroops, unit.troops + heal);
+    const healed = unit.troops - before;
+    return { ok: true, key, attacker: un, heal: healed,
+      text: healed > 0 ? `${un} 施展【安抚军心】，补充兵力 ${healed}！` : `${un} 施展【安抚军心】，但兵力已满。` };
+  }
+  const frac = key === "ambush"
+    ? 0.10 + Math.max(0, unit.g.zhi - target.g.zhi) / 500  // 0.10~0.22 区间
+    : 0.06 + Math.max(0, unit.g.zhi - target.g.zhi) / 900; // disrupt: 略低
+  const loss = Math.min(target.troops, Math.round(target.maxTroops * Math.min(key === "ambush" ? 0.22 : 0.16, frac)));
+  target.troops -= loss;
+  return { ok: true, key, attacker: un, defender: tn, loss,
+    text: `${un} 施展【${t.name}】，${tn} 折损兵力 ${loss}！` };
+}
+
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { TACTICS, makeFighter, resolveTurn, firstMover, aiChooseTactic, aiChoosePlan, autoBattle, computeDamage, staminaCost, staminaRegen, schemeSuccess, guardBlockFrac, applyScheme };
+  module.exports = {
+    TACTICS, makeFighter, resolveTurn, firstMover, aiChooseTactic, aiChoosePlan, autoBattle, computeDamage, staminaCost, staminaRegen, schemeSuccess, guardBlockFrac, applyScheme,
+    maxTroops, troopQuality, recruitAmount, makeTroopUnit, troopClash, provokeSuccess, TEAM_TACTICS, applyTeamScheme,
+  };
 }

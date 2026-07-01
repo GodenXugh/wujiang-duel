@@ -70,6 +70,7 @@
     battle: "assets/bgm/single_combat.mp3",   // 单挑
     war: "assets/bgm/tactics.mp3",            // 阵营大战
     cup: "assets/bgm/tactics.mp3",            // 世界杯（沿用战术曲）
+    teamwar: "assets/bgm/tactics.mp3",        // 组队大战（沿用战术曲）
   };
   function showScreen(id) {
     $$(".screen").forEach(s => s.classList.remove("active"));
@@ -149,13 +150,14 @@
 
     open(mode) {
       this.mode = mode; this.picks = []; this.side = "cn";
-      this.need = mode === "classic" ? 2 : (mode === "cup" ? Tournament.size : 1);
-      const titles = { classic: "经典单挑 · 选择双将", gauntlet: "车轮大战 · 选你的主将", cup: `世界杯 · 选 ${Tournament.size} 将` };
+      this.need = mode === "classic" ? 2 : (mode === "cup" ? Tournament.size : (mode === "team" ? 10 : 1));
+      const titles = { classic: "经典单挑 · 选择双将", gauntlet: "车轮大战 · 选你的主将", cup: `世界杯 · 选 ${Tournament.size} 将`, team: "组队大战 · 选择己方阵容（最多10人）" };
       $("#select-title").textContent = titles[mode] || "选择武将";
       const hints = {
         classic: "依次点选两名武将（可同阵营）· 或点「随机双将」· 点 ⓘ 查看六维属性",
         gauntlet: "选一名主将连斩群雄 · 点 ⓘ 查看六维属性",
         cup: `点选参赛武将（最多 ${Tournament.size} 名）· 不足将随机补满`,
+        team: "先选阵营 tab，再点选最多10名武将（固定三国/战国对战）· 不足将随机补满，AI 另组一队应战",
       };
       $("#select-hint").textContent = hints[mode] || "";
       // 「随机双将」仅经典单挑可用
@@ -180,8 +182,11 @@
     },
     setSide(side) {
       this.side = side;
+      // 组队大战固定单一阵营出战：切换阵营视为重新选人
+      if (this.mode === "team") this.picks = [];
       $$(".side-tab", $("#screen-select")).forEach(t => t.classList.toggle("active", t.dataset.side === side));
       this.render();
+      this.updateBar();
     },
     render() {
       const kw = $("#select-search").value.trim();
@@ -240,6 +245,10 @@
         info.textContent = `已选 ${this.picks.length}/${this.need}（不足将随机补满）`;
         btn.disabled = false;
         btn.textContent = this.picks.length >= this.need ? "满员开赛" : "开赛";
+      } else if (this.mode === "team") {
+        info.textContent = `已选 ${this.picks.length}/${this.need}（${sideName(this.side)}）· 不足将随机补满，AI 另组一队应战`;
+        btn.disabled = false;
+        btn.textContent = this.picks.length >= this.need ? "满员出战" : "组队出战";
       }
     },
     confirm() {
@@ -249,6 +258,8 @@
         Gauntlet.start(this.picks[0]);
       } else if (this.mode === "cup") {
         Tournament.begin(this.picks);
+      } else if (this.mode === "team") {
+        TeamBattle.begin(this.picks, this.side);
       }
     },
   };
@@ -562,6 +573,24 @@
       };
       BATTLE = b;
       $("#battle-title").textContent = opts.title || "阵营大战 · 单挑";
+      enterBattle();
+      if (opts.intro) logLine(opts.intro, "sys");
+    });
+  }
+
+  // 组队大战 · 挑唆触发的单挑：与 autoPlayBattle 结构一致，但 spectate 可控——
+  // 未委托 AI 时玩家可在此像素单挑画面里亲自操作（约定：玩家一方武将固定传为 g1，见 TeamBattle.provoke）
+  function startTeamDuel(g1, g2, opts = {}) {
+    return new Promise(resolve => {
+      const b = {
+        p1: makeFighter(g1), p2: makeFighter(g2),
+        round: 0, mode: "team", busy: false, spectate: !!opts.spectate,
+        backScreen: "teamwar",
+        onWin: (winner, loser) => resolve({ winner, loser }),
+        abortResolve: () => resolve(null),
+      };
+      BATTLE = b;
+      $("#battle-title").textContent = opts.title || "阵前挑唆 · 单挑";
       enterBattle();
       if (opts.intro) logLine(opts.intro, "sys");
     });
@@ -1097,6 +1126,258 @@
   function sideName(side) { return side === "cn" ? "三国" : "战国"; }
 
   /* ============================================================
+   *  组队大战：固定三国 vs 战国，双方各自最多 10 名武将带兵出战。
+   *  兵力/训练值/征兵量/计谋/挑唆的数值逻辑均在 engine.js（见 maxTroops 等）；
+   *  这里只负责编队、回合编排与界面渲染。玩家指挥己方全队，AI 指挥敌队；
+   *  「委托 AI」开启后己方也转为自动。
+   * ============================================================ */
+  const TeamBattle = {
+    gen: 0, cn: [], jp: [], playerSide: "cn", delegated: false, running: false,
+    round: 0, kills: { player: 0, ai: 0 }, rpg: false,
+
+    aiSide() { return this.playerSide === "cn" ? "jp" : "cn"; },
+    playerArr() { return this[this.playerSide]; },
+    enemyArr() { return this[this.aiSide()]; },
+    enemyArrOf(unit) { return unit.side === this.playerSide ? this.enemyArr() : this.playerArr(); },
+
+    begin(picks, side, opts = {}) {
+      this.gen++;
+      const myGen = this.gen;
+      this.playerSide = side;
+      this.delegated = false;
+      this.running = true;
+      this.round = 0;
+      this.rpg = !!opts.rpg;
+      const oppSide = side === "cn" ? "jp" : "cn";
+      let mine = picks.slice(0, 10).map(clone);
+      if (mine.length < 10) {
+        const have = new Set(mine.map(p => p.id));
+        const pool = DB.bySide(side).filter(g => !have.has(g.id));
+        shuffle(pool);
+        while (mine.length < 10 && pool.length) mine.push(clone(pool.shift()));
+      }
+      let theirs = DB.bySide(oppSide).slice();
+      shuffle(theirs);
+      theirs = theirs.slice(0, Math.min(10, theirs.length)).map(clone);
+      this.cn = (side === "cn" ? mine : theirs).map(g => makeTroopUnit(g, "cn"));
+      this.jp = (side === "jp" ? mine : theirs).map(g => makeTroopUnit(g, "jp"));
+      this.kills = { player: 0, ai: 0 };
+      showScreen("teamwar");
+      $("#tw-log").innerHTML = "";
+      $("#tw-actions").innerHTML = "";
+      $("#tw-status").textContent = "两军列阵，大战一触即发！";
+      this.log(`双方列阵完毕：你方（${sideName(side)}）${mine.length} 将　迎战　敌方（${sideName(oppSide)}·AI）${theirs.length} 将！`);
+      this.renderBoard();
+      this.loop(myGen);
+    },
+
+    async loop(myGen) {
+      while (this.gen === myGen) {
+        const aliveCN = this.cn.filter(u => u.alive), aliveJP = this.jp.filter(u => u.alive);
+        if (!aliveCN.length || !aliveJP.length) { this.finish(myGen); return; }
+        this.round++;
+        this.log(`—— 第 ${this.round} 回合 ——`);
+        const order = [...aliveCN, ...aliveJP]
+          .map(u => ({ u, key: u.g.tong + rand(0, 20) }))
+          .sort((a, b) => b.key - a.key)
+          .map(x => x.u);
+        for (const unit of order) {
+          if (this.gen !== myGen) return;
+          if (!unit.alive) continue;
+          if (!this.enemyArrOf(unit).filter(u => u.alive).length) break;  // 对面已全灭，提前结束本轮
+          $("#tw-status").textContent = `第 ${this.round} 回合 —— 轮到 ${unit.g.name}（${sideName(unit.side)}）行动`;
+          if (unit.side === this.playerSide && !this.delegated) {
+            await this.playerTurn(unit);
+          } else {
+            await this.aiTurn(unit);
+          }
+          if (this.gen !== myGen) return;
+          this.renderBoard();
+          const c2 = this.cn.filter(u => u.alive).length, j2 = this.jp.filter(u => u.alive).length;
+          if (!c2 || !j2) { this.finish(myGen); return; }
+        }
+      }
+    },
+
+    playerTurn(unit) {
+      return new Promise(resolve => { this.renderActions(unit, resolve); });
+    },
+
+    async aiTurn(unit) {
+      await sleep(this.delegated ? 260 : 420);
+      const action = this.aiChooseTeamAction(unit);
+      if (action.type === "attack") this.doAttack(unit, action.target);
+      else if (action.type === "scheme") this.doScheme(unit, action.target, action.key);
+      else if (action.type === "recruit") this.doRecruit(unit);
+      else if (action.type === "provoke") await this.doProvoke(unit, action.target);
+    },
+
+    aiChooseTeamAction(unit) {
+      const enemies = this.enemyArrOf(unit).filter(u => u.alive);
+      if (!enemies.length) return { type: "recruit" };
+      const lowSelf = unit.troops < unit.maxTroops * 0.3;
+      const r = Math.random();
+      if (lowSelf && unit.g.zhi >= 60 && r < 0.5) return { type: "scheme", target: unit, key: "rally" };
+      if (lowSelf) return { type: "recruit" };
+      const weakest = enemies.slice().sort((a, b) => a.troops - b.troops)[0];
+      if (r < 0.12 && unit.g.mei >= 55) return { type: "provoke", target: weakest };
+      if (r < 0.32 && unit.g.zhi >= 65) return { type: "scheme", target: weakest, key: Math.random() < 0.5 ? "disrupt" : "ambush" };
+      return { type: "attack", target: weakest };
+    },
+
+    /* ---- 行动面板 ---- */
+    renderActions(unit, resolve) {
+      const box = $("#tw-actions");
+      const finish = () => { box.innerHTML = ""; resolve(); };
+      box.innerHTML = `
+        <div class="tw-turn">轮到 <b>${unit.g.name}</b>（兵力 ${unit.troops}/${unit.maxTroops}）行动</div>
+        <div class="tw-act-row">
+          <button class="cup-go primary" id="tw-act-attack">⚔ 带兵攻击</button>
+          <button class="cup-go primary" id="tw-act-scheme">🧠 计谋</button>
+          <button class="cup-go primary" id="tw-act-provoke">🗣 挑唆</button>
+          <button class="cup-go" id="tw-act-recruit">👥 征兵</button>
+          <button class="cup-go" id="tw-act-delegate">${this.delegated ? "✓ 已委托 AI" : "🤖 委托 AI"}</button>
+        </div>`;
+      $("#tw-act-attack").onclick = () => {
+        const enemies = this.enemyArr().filter(u => u.alive);
+        this.pickTarget("选择攻击目标", enemies, target => { if (!target) return; this.doAttack(unit, target); finish(); });
+      };
+      $("#tw-act-scheme").onclick = () => this.renderSchemeMenu(unit, resolve);
+      $("#tw-act-provoke").onclick = () => {
+        const enemies = this.enemyArr().filter(u => u.alive);
+        this.pickTarget("选择挑唆目标", enemies, target => { if (!target) return; this.doProvoke(unit, target).then(finish); });
+      };
+      $("#tw-act-recruit").onclick = () => { this.doRecruit(unit); finish(); };
+      $("#tw-act-delegate").onclick = () => { this.delegated = true; toast("已委托 AI 指挥己方全队"); finish(); };
+    },
+    renderSchemeMenu(unit, resolve) {
+      const box = $("#tw-actions");
+      const finish = () => { box.innerHTML = ""; resolve(); };
+      box.innerHTML = `
+        <div class="tw-turn">${unit.g.name} 施展何计？</div>
+        <div class="tw-act-row">
+          ${Object.values(TEAM_TACTICS).map(t => `<button class="cup-go primary" data-k="${t.key}">${t.icon} ${t.name}</button>`).join("")}
+          <button class="cup-go" id="tw-scheme-back">‹ 返回</button>
+        </div>
+        <div class="section-hint">${Object.values(TEAM_TACTICS).map(t => t.name + "：" + t.desc).join(" ｜ ")}</div>`;
+      $$("[data-k]", box).forEach(b => b.onclick = () => {
+        const key = b.dataset.k;
+        if (key === "rally") { this.doScheme(unit, unit, key); finish(); return; }
+        const enemies = this.enemyArr().filter(u => u.alive);
+        this.pickTarget(`选择【${TEAM_TACTICS[key].name}】目标`, enemies, target => { if (!target) return; this.doScheme(unit, target, key); finish(); });
+      });
+      $("#tw-scheme-back").onclick = () => this.renderActions(unit, resolve);
+    },
+    pickTarget(title, arr, cb) {
+      if (!arr.length) { cb(null); return; }
+      const html = `<div class="result-card tw-pick">
+        <h1>${title}</h1>
+        <div class="grid">${arr.map(u => `
+          <div class="card ${u.side}" data-i="${arr.indexOf(u)}">
+            <div class="avatar">${avatarChar(u.g.name)}</div>
+            <div class="cname">${u.g.name}</div>
+            <div class="cwu">兵力 ${u.troops}/${u.maxTroops}</div>
+          </div>`).join("")}
+        </div>
+        <div class="btns"><button class="btn-ghost" id="tw-pick-cancel">取消</button></div>
+      </div>`;
+      openOverlay(html);
+      $$(".card", $("#overlay-content")).forEach(c => c.onclick = () => { const u = arr[+c.dataset.i]; closeOverlay(); cb(u); });
+      $("#tw-pick-cancel").onclick = () => { closeOverlay(); cb(null); };
+    },
+
+    /* ---- 行动结算 ---- */
+    doAttack(unit, target) {
+      const { toDef, toAtk } = troopClash(unit, target);
+      target.troops -= toDef; unit.troops -= toAtk;
+      this.log(`${unit.g.name} 带兵攻击 ${target.g.name}：折损敌兵 ${toDef}，己方反噬损兵 ${toAtk}。`);
+      this.checkRout(target); this.checkRout(unit);
+    },
+    doScheme(caster, target, key) {
+      const base = TEAM_TACTICS[key].base;
+      const ok = Math.random() < schemeSuccess(caster, target, base);
+      const ev = applyTeamScheme(caster, target, key, ok);
+      this.log(ev.text);
+      this.checkRout(target);
+    },
+    // 兵力耗尽即溃退出局（计入击杀）；若已阵亡则忽略，避免重复计数
+    checkRout(u) {
+      if (!u.alive || u.troops > 0) return;
+      this.markDead(u);
+      this.log(`💥 ${u.g.name} 兵力耗尽，退出战场！`);
+    },
+    markDead(u) {
+      if (!u.alive) return;
+      u.troops = 0; u.alive = false;
+      if (u.side !== this.playerSide) this.kills.player++; else this.kills.ai++;
+    },
+    doRecruit(unit) {
+      const amt = recruitAmount(unit.g);
+      const before = unit.troops;
+      unit.troops = Math.min(unit.maxTroops, unit.troops + amt);
+      const gained = unit.troops - before;
+      this.log(gained > 0 ? `${unit.g.name} 就地征兵，补充兵力 ${gained}。` : `${unit.g.name} 就地征兵，但兵力已满。`);
+    },
+    async doProvoke(unit, target) {
+      const ok = Math.random() < provokeSuccess(unit, target);
+      if (!ok) { this.log(`${unit.g.name} 挑唆 ${target.g.name}，未能得逞。`); return; }
+      this.log(`${unit.g.name} 挑唆得逞，${target.g.name} 被迫应战，两将转入单挑！`);
+      const playerIsUnit = unit.side === this.playerSide;
+      const g1 = playerIsUnit ? unit.g : target.g;   // 玩家一方武将固定作为 p1，保证操控权
+      const g2 = playerIsUnit ? target.g : unit.g;
+      const res = await startTeamDuel(g1, g2, {
+        title: "阵前挑唆 · 单挑",
+        intro: `${unit.g.name} 挑唆 ${target.g.name}，两将阵前单挑！`,
+        spectate: this.delegated,
+      });
+      showScreen("teamwar");
+      if (!res) { this.log("单挑中途中止，双方各自归队。"); return; }
+      const loserUnit = res.loser === unit.g ? unit : target;
+      this.markDead(loserUnit);
+      this.log(`💥 ${loserUnit.g.name} 单挑落败，连兵带将退出战场！`);
+    },
+
+    /* ---- 渲染 ---- */
+    renderBoard() {
+      const row = u => `<div class="tw-unit ${u.alive ? "" : "dead"}">
+        <div class="tw-avatar">${avatarChar(u.g.name)}</div>
+        <div class="tw-info">
+          <div class="tw-name">${u.g.name}${u.side === this.playerSide ? ' <span class="tw-you">你</span>' : ""}</div>
+          <div class="tw-track"><span class="tw-fill" style="width:${Math.max(0, u.troops / u.maxTroops * 100)}%"></span></div>
+          <div class="tw-num">${u.troops}/${u.maxTroops}</div>
+        </div>
+      </div>`;
+      $("#tw-cn").innerHTML = `<div class="tw-side-title cn">🐲 三国 ${this.cn.filter(u => u.alive).length}/${this.cn.length}</div>` + this.cn.map(row).join("");
+      $("#tw-jp").innerHTML = `<div class="tw-side-title jp">🏯 战国 ${this.jp.filter(u => u.alive).length}/${this.jp.length}</div>` + this.jp.map(row).join("");
+    },
+    log(text) {
+      const el = document.createElement("div"); el.className = "ln"; el.textContent = text;
+      const box = $("#tw-log"); box.appendChild(el); box.scrollTop = box.scrollHeight;
+    },
+
+    finish(myGen) {
+      if (this.gen !== myGen) return;
+      this.running = false;
+      const cnAlive = this.cn.filter(u => u.alive).length, jpAlive = this.jp.filter(u => u.alive).length;
+      const playerWon = this.playerSide === "cn" ? cnAlive > 0 : jpAlive > 0;
+      const mineAlive = this.playerSide === "cn" ? cnAlive : jpAlive, mineTotal = this.playerArr().length;
+      const theirAlive = this.playerSide === "cn" ? jpAlive : cnAlive, theirTotal = this.enemyArr().length;
+      this.log(playerWon ? "🎉 敌军溃散，你方大获全胜！" : "💀 己方全军溃败……");
+      $("#tw-status").textContent = playerWon ? "大捷！" : "败退……";
+      openOverlay(`<div class="result-card">
+        <h1>${playerWon ? "大捷" : "败退"}</h1>
+        <div class="wdesc">你方存活 <b>${mineAlive}</b>/${mineTotal} 将，敌方存活 <b>${theirAlive}</b>/${theirTotal} 将。<br>本场击杀敌将 <b style="color:var(--cn-red)">${this.kills.player}</b> 员。</div>
+        <div class="btns">
+          <button class="btn-primary" id="tw-again">再来一场</button>
+          <button class="btn-ghost" id="tw-home">返回菜单</button>
+        </div></div>`);
+      $("#tw-again").onclick = () => { closeOverlay(); this.rpg ? RPG.teamBattle() : SelectUI.open("team"); };
+      $("#tw-home").onclick = () => { closeOverlay(); showScreen(this.rpg ? "rpg" : "home"); };
+      if (this.rpg) RPG.onTeamBattleResult(this.kills.player, playerWon);
+    },
+  };
+
+  /* ============================================================
    *  数据库管理界面
    * ============================================================ */
   /* ============================================================
@@ -1549,12 +1830,13 @@
           <button class="cup-go primary" id="rpg-train">⚔ 历练单挑</button>
           <button class="cup-go primary" id="rpg-gauntlet">🔥 车轮大战</button>
           <button class="cup-go primary" id="rpg-war">🚩 阵营大战</button>
+          <button class="cup-go primary" id="rpg-teamwar">🛡 组队厮杀</button>
           <button class="cup-go primary" id="rpg-cup16">🏆 世界杯 16 强</button>
           <button class="cup-go primary" id="rpg-cup32">🏆 世界杯 32 强</button>
           <button class="cup-go" id="rpg-rename">✎ 改名</button>
           <button class="cup-go" id="rpg-reset">↺ 重建角色</button>
         </div>
-        <div class="section-hint">历练 / 车轮 / 阵营 / 世界杯 均可获得经验，升级获得加点；战绩越好经验越多。</div>
+        <div class="section-hint">历练 / 车轮 / 阵营 / 组队 / 世界杯 均可获得经验，升级获得加点；战绩越好经验越多。</div>
       </div>`;
       // 蜘蛛图外框高度与右侧（评分+加点+六维）总高度对齐；图形本身按宽度等比居中，不被拉伸变形
       const sideEl = C.querySelector(".rpg-side"), radarEl = C.querySelector(".rpg-radar");
@@ -1566,6 +1848,7 @@
       $("#rpg-train").onclick = () => this.train();
       $("#rpg-gauntlet").onclick = () => this.gauntlet();
       $("#rpg-war").onclick = () => this.war();
+      $("#rpg-teamwar").onclick = () => this.teamBattle();
       $("#rpg-cup16").onclick = () => this.joinCup(16);
       $("#rpg-cup32").onclick = () => this.joinCup(32);
       $("#rpg-rename").onclick = () => {
@@ -1652,6 +1935,21 @@
       this.grantExp(exp, "阵营大战 " + (sideWon ? "· 获胜" : "· 落败"),
         `你麾下斩敌 <b style="color:var(--cn-red)">${kills}</b> 员，本方阵营${sideWon ? '获胜！' : '惜败。'}`,
         () => this.war());
+    },
+
+    /* ---- 组队大战 ---- */
+    teamBattle() {
+      const hero = this.heroGeneral();
+      const pool = DB.bySide(hero.side).slice();
+      shuffle(pool);
+      const mates = pool.slice(0, 9);
+      TeamBattle.begin([hero, ...mates], hero.side, { rpg: true });
+    },
+    onTeamBattleResult(kills, won) {
+      const exp = kills * 20 + (won ? 150 : 0);
+      this.grantExp(exp, "组队大战 " + (won ? "· 获胜" : "· 落败"),
+        `本场麾下击杀敌将 <b style="color:var(--cn-red)">${kills}</b> 员，全军${won ? '大捷！' : '溃败。'}`,
+        () => this.teamBattle());
     },
 
     // 统一发放经验/升级并弹窗
@@ -1870,12 +2168,20 @@
     $$("[data-back]").forEach(b => b.onclick = () => {
       const onBattle = $("#screen-battle").classList.contains("active");
       // 阵营大战详情观战：脱离单挑画面退回战报界面，但本场大战继续推进（非中止）
-      if (onBattle && BATTLE && BATTLE.spectate) {
+      if (onBattle && BATTLE && BATTLE.spectate && BATTLE.mode !== "team") {
         closeOverlay();
         War.detach();   // 内部已切回战报界面、切到「快捷」并续算当前阵
         return;
       }
       if (BATTLE && BATTLE.busy && onBattle) return;
+      // 组队大战·挑唆单挑中途退出：视为中止该场单挑，回到组队大战战场（不终止整场组队大战）
+      if (onBattle && BATTLE && BATTLE.mode === "team") {
+        const b = BATTLE; BATTLE = null;
+        closeOverlay();
+        showScreen(b.backScreen || "home");
+        if (b.abortResolve) b.abortResolve();
+        return;
+      }
       if (BATTLE) BATTLE.busy = false;
       War.abort();   // 终止可能在进行中的阵营大战
       closeOverlay();

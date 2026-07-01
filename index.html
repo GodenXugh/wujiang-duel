@@ -37,6 +37,9 @@
       <button class="menu-btn" data-go="war">
         <span class="mi">🚩</span><span>阵营大战<small>三国 VS 战国，百将捉对厮杀</small></span>
       </button>
+      <button class="menu-btn" data-go="select" data-mode="team">
+        <span class="mi">🛡️</span><span>组队大战<small>各带兵最多10将，攻城计谋挑唆征兵</small></span>
+      </button>
       <button class="menu-btn" data-go="cup">
         <span class="mi">🏆</span><span>武将世界杯<small>随机分组，小组赛+淘汰赛争霸</small></span>
       </button>
@@ -155,6 +158,25 @@
       <div class="info" id="war-info">规模：每方 100 名武将</div>
       <button id="war-start">开战</button>
     </div>
+  </section>
+
+  <!-- ========== 组队大战 ========== -->
+  <section id="screen-teamwar" class="screen">
+    <div class="topbar">
+      <span class="back" data-back>‹</span>
+      <h2>组队大战</h2>
+      <div class="audio-btns">
+        <button id="btn-music7">♪</button>
+        <button id="btn-sfx7">🔊</button>
+      </div>
+    </div>
+    <div class="section-hint" id="tw-status">两军列阵，大战一触即发！</div>
+    <div class="tw-board">
+      <div class="tw-roster" id="tw-cn"></div>
+      <div class="tw-roster" id="tw-jp"></div>
+    </div>
+    <div class="tw-log" id="tw-log"></div>
+    <div class="tw-actions" id="tw-actions"></div>
   </section>
 
   <!-- ========== 世界杯淘汰赛 ========== -->
