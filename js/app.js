@@ -1533,15 +1533,18 @@
           </div>
         </div>
         <div class="rpg-overview">
-          <div class="rpg-radar">${radarSVG(this.heroGeneral(), 190)}</div>
-          <div class="rpg-total">
-            <div class="rt-lbl">武将评分 ${ratingChip(this.heroGeneral())}</div>
-            <div class="rt-num">${ratingScore(this.heroGeneral())}</div>
-            <div class="rt-grade">六维 ${sum} + 突出 ${Math.round(ratingScore(this.heroGeneral()) - sum)}</div>
+          <div class="rpg-radar">${radarSVG(this.heroGeneral(), 220)}</div>
+          <div class="rpg-side">
+            <div class="rpg-score-mini">
+              <span class="rsm-lbl">武将评分</span>
+              <span class="rsm-num">${ratingScore(this.heroGeneral())}</span>
+              ${ratingChip(this.heroGeneral())}
+              <span class="rsm-sub">六维 ${sum} + 突出 ${Math.round(ratingScore(this.heroGeneral()) - sum)}</span>
+            </div>
+            <div class="rpg-dims">${dims}</div>
           </div>
         </div>
         <div class="rpg-points">可分配加点：<b>${c.points}</b> ${c.points > 0 ? '（点 ＋ 分配）' : ''}</div>
-        <div class="rpg-dims">${dims}</div>
         <div class="rpg-actions">
           <button class="cup-go primary" id="rpg-train">⚔ 历练单挑</button>
           <button class="cup-go primary" id="rpg-gauntlet">🔥 车轮大战</button>

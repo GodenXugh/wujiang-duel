@@ -14,7 +14,7 @@ const TACTICS = {
   bind:    { key: "bind",    name: "束缚", icon: "🪢", desc: "计策(免费)：使敌方下一回合暂停出招；发动后仍可出招，每回合限一计", stam: 12, type: "scheme", scheme: "bind", free: true },
   weaken:  { key: "weaken",  name: "弱化", icon: "🌀", desc: "计策(免费)：削弱敌方攻击力，时长随智力而定；发动后仍可出招，每回合限一计", stam: 10, type: "scheme", scheme: "weaken", free: true },
   heal:    { key: "heal",    name: "疗伤", icon: "💊", desc: "计策：运功恢复自身体力（占用行动）；成败与回复随智力而定",          stam: 11, type: "scheme", scheme: "heal" },
-  charge:  { key: "charge",  name: "蓄力", icon: "🔥", desc: "计策：凝气蓄力（消耗战意）、下次出招暴发（占用行动）；成败随智力而定", stam: 12, type: "scheme", scheme: "charge" },
+  charge:  { key: "charge",  name: "蓄力", icon: "🔥", desc: "计策：凝气蓄力（消耗大量战意）、下次出招暴发（占用行动）；成败随智力而定", stam: 24, type: "scheme", scheme: "charge" },
 };
 
 // 相克关系：attacker 战术 对 defender 战术的倍率
@@ -267,11 +267,11 @@ function resolveTurn(attacker, defender, plan, who) {
     attacker.stam = Math.max(0, attacker.stam - staminaCost(mk, attacker.g));
     const wasCharged = attacker.charged; attacker.charged = false;
     const res = computeDamage(attacker, defender, mk, defender.stance || "normal", wasCharged);
-    // 守方格挡：按统帅/武力比例卸伤，卸掉的伤害全部转化为守方战意（额外加成）
+    // 守方格挡：按统帅/武力比例卸伤，卸掉的伤害双倍转化为守方战意（额外加成）
     if (defender.guard) {
       const blocked = Math.round(res.dmg * guardBlockFrac(defender, attacker));
       res.dmg = Math.max(0, res.dmg - blocked);
-      defender.stam = Math.min(100, defender.stam + blocked);
+      defender.stam = Math.min(100, defender.stam + blocked * 2);
       defender.guard = false; res.guarded = true; res.blocked = blocked;
     }
     // 受创换取战意：按最终所受伤害比例转化；有格挡时在上面的加成之外再叠加基础转化
