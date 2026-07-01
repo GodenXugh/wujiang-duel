@@ -1133,7 +1133,7 @@
    * ============================================================ */
   const TeamBattle = {
     gen: 0, cn: [], jp: [], playerSide: "cn", delegated: false, running: false,
-    round: 0, kills: { player: 0, ai: 0 }, rpg: false,
+    round: 0, kills: { player: 0, ai: 0 }, rpg: false, picking: null,
 
     aiSide() { return this.playerSide === "cn" ? "jp" : "cn"; },
     playerArr() { return this[this.playerSide]; },
@@ -1145,6 +1145,7 @@
       const myGen = this.gen;
       this.playerSide = side;
       this.delegated = false;
+      this.picking = null;
       this.running = true;
       this.round = 0;
       this.rpg = !!opts.rpg;
@@ -1227,6 +1228,7 @@
 
     /* ---- 行动面板 ---- */
     renderActions(unit, resolve) {
+      this.picking = null;
       const box = $("#tw-actions");
       const finish = () => { box.innerHTML = ""; resolve(); };
       box.innerHTML = `
@@ -1240,17 +1242,22 @@
         </div>`;
       $("#tw-act-attack").onclick = () => {
         const enemies = this.enemyArr().filter(u => u.alive);
-        this.pickTarget("选择攻击目标", enemies, target => { if (!target) return; this.doAttack(unit, target); finish(); });
+        this.pickTarget("请点选要带兵攻击的敌方武将", enemies,
+          target => { this.doAttack(unit, target); finish(); },
+          () => this.renderActions(unit, resolve));
       };
       $("#tw-act-scheme").onclick = () => this.renderSchemeMenu(unit, resolve);
       $("#tw-act-provoke").onclick = () => {
         const enemies = this.enemyArr().filter(u => u.alive);
-        this.pickTarget("选择挑唆目标", enemies, target => { if (!target) return; this.doProvoke(unit, target).then(finish); });
+        this.pickTarget("请点选要挑唆的敌方武将", enemies,
+          target => { this.doProvoke(unit, target).then(finish); },
+          () => this.renderActions(unit, resolve));
       };
       $("#tw-act-recruit").onclick = () => { this.doRecruit(unit); finish(); };
       $("#tw-act-delegate").onclick = () => { this.delegated = true; toast("已委托 AI 指挥己方全队"); finish(); };
     },
     renderSchemeMenu(unit, resolve) {
+      this.picking = null;
       const box = $("#tw-actions");
       const finish = () => { box.innerHTML = ""; resolve(); };
       box.innerHTML = `
@@ -1264,26 +1271,22 @@
         const key = b.dataset.k;
         if (key === "rally") { this.doScheme(unit, unit, key); finish(); return; }
         const enemies = this.enemyArr().filter(u => u.alive);
-        this.pickTarget(`选择【${TEAM_TACTICS[key].name}】目标`, enemies, target => { if (!target) return; this.doScheme(unit, target, key); finish(); });
+        this.pickTarget(`请点选【${TEAM_TACTICS[key].name}】的目标`, enemies,
+          target => { this.doScheme(unit, target, key); finish(); },
+          () => this.renderSchemeMenu(unit, resolve));
       });
       $("#tw-scheme-back").onclick = () => this.renderActions(unit, resolve);
     },
-    pickTarget(title, arr, cb) {
-      if (!arr.length) { cb(null); return; }
-      const html = `<div class="result-card tw-pick">
-        <h1>${title}</h1>
-        <div class="grid">${arr.map(u => `
-          <div class="card ${u.side}" data-i="${arr.indexOf(u)}">
-            <div class="avatar">${avatarChar(u.g.name)}</div>
-            <div class="cname">${u.g.name}</div>
-            <div class="cwu">兵力 ${u.troops}/${u.maxTroops}</div>
-          </div>`).join("")}
-        </div>
-        <div class="btns"><button class="btn-ghost" id="tw-pick-cancel">取消</button></div>
-      </div>`;
-      openOverlay(html);
-      $$(".card", $("#overlay-content")).forEach(c => c.onclick = () => { const u = arr[+c.dataset.i]; closeOverlay(); cb(u); });
-      $("#tw-pick-cancel").onclick = () => { closeOverlay(); cb(null); };
+    // 目标选择改为直接点选武将区域对应行（见 renderBoard 的行点击逻辑），不再使用弹窗
+    pickTarget(prompt, arr, cb, onCancel) {
+      if (!arr.length) { onCancel(); return; }
+      this.picking = { arr, cb, onCancel };
+      $("#tw-status").textContent = prompt;
+      const box = $("#tw-actions");
+      box.innerHTML = `<div class="tw-turn">${prompt}</div>
+        <div class="tw-act-row"><button class="cup-go" id="tw-pick-cancel">‹ 取消</button></div>`;
+      $("#tw-pick-cancel").onclick = () => { this.picking = null; this.renderBoard(); onCancel(); };
+      this.renderBoard();
     },
 
     /* ---- 行动结算 ---- */
@@ -1338,17 +1341,36 @@
     },
 
     /* ---- 渲染 ---- */
+    // 存活武将的评分/兵力总计，用于顶部汇总栏
+    teamTotals(arr) {
+      const alive = arr.filter(u => u.alive);
+      return { score: alive.reduce((s, u) => s + ratingScore(u.g), 0), troops: alive.reduce((s, u) => s + u.troops, 0) };
+    },
     renderBoard() {
-      const row = u => `<div class="tw-unit ${u.alive ? "" : "dead"}">
-        <div class="tw-avatar">${avatarChar(u.g.name)}</div>
-        <div class="tw-info">
+      const row = (u, i) => {
+        const pickable = this.picking && this.picking.arr.includes(u);
+        return `<div class="tw-unit ${u.alive ? "" : "dead"} ${pickable ? "pickable" : ""}" data-side="${u.side}" data-idx="${i}">
           <div class="tw-name">${u.g.name}${u.side === this.playerSide ? ' <span class="tw-you">你</span>' : ""}</div>
+          <div class="tw-troops">${u.troops}</div>
           <div class="tw-track"><span class="tw-fill" style="width:${Math.max(0, u.troops / u.maxTroops * 100)}%"></span></div>
-          <div class="tw-num">${u.troops}/${u.maxTroops}</div>
-        </div>
-      </div>`;
-      $("#tw-cn").innerHTML = `<div class="tw-side-title cn">🐲 三国 ${this.cn.filter(u => u.alive).length}/${this.cn.length}</div>` + this.cn.map(row).join("");
-      $("#tw-jp").innerHTML = `<div class="tw-side-title jp">🏯 战国 ${this.jp.filter(u => u.alive).length}/${this.jp.length}</div>` + this.jp.map(row).join("");
+        </div>`;
+      };
+      $("#tw-cn").innerHTML = this.cn.map(row).join("");
+      $("#tw-jp").innerHTML = this.jp.map(row).join("");
+      const cnT = this.teamTotals(this.cn), jpT = this.teamTotals(this.jp);
+      $("#tw-sum-cn").innerHTML = `<span class="tws-tag">🐲 三国 ${this.cn.filter(u => u.alive).length}/${this.cn.length}</span><span class="tws-stat">评分 ${cnT.score}</span><span class="tws-stat">兵力 ${cnT.troops}</span>`;
+      $("#tw-sum-jp").innerHTML = `<span class="tws-tag">🏯 战国 ${this.jp.filter(u => u.alive).length}/${this.jp.length}</span><span class="tws-stat">评分 ${jpT.score}</span><span class="tws-stat">兵力 ${jpT.troops}</span>`;
+      // 拾取模式下点选整行即选中目标；平时点击武将姓名弹出武将详情
+      $$("#tw-cn .tw-unit, #tw-jp .tw-unit").forEach(el => {
+        const u = this[el.dataset.side][+el.dataset.idx];
+        el.onclick = e => {
+          if (this.picking) {
+            if (this.picking.arr.includes(u)) { const cb = this.picking.cb; this.picking = null; this.renderBoard(); cb(u); }
+            return;
+          }
+          if (e.target.closest(".tw-name")) showDetail(u.g);
+        };
+      });
     },
     log(text) {
       const el = document.createElement("div"); el.className = "ln"; el.textContent = text;
