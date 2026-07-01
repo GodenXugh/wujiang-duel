@@ -53,14 +53,14 @@
   const DIMS = [["ti", "体力"], ["wu", "武力"], ["tong", "统帅"], ["zhi", "智力"], ["zheng", "政治"], ["mei", "魅力"]];
   function sumStats(g) { return g.ti + g.wu + g.tong + g.zhi + g.zheng + g.mei; }
   function gradeChip(v) { const r = rateLetter(v); return `<span class="g grade-${r}">${r}</span>`; }
-  // 武将评分 = 六维之和 + 单项突出加成（每项达 S 及以上：(该项数值-95)×4，未达 S 不加分）
+  // 武将评分 = 六维之和 + 单项突出加成（每项达 A 及以上：(该项数值-90)×5，未达 A 不加分）
   function ratingScore(g) {
     let s = sumStats(g);
-    DIMS.forEach(([k]) => { s += Math.max(0, (g[k] - 95) * 4); });
+    DIMS.forEach(([k]) => { s += Math.max(0, (g[k] - 90) * 5); });
     return s;
   }
-  // 武将评级：武将评分（含突出加成）÷5，再套用与单项相同的评级阈值
-  function warriorRating(g) { return rateLetter(Math.round(ratingScore(g) / 5)); }
+  // 武将评级：武将评分（含突出加成）÷6，再套用与单项相同的评级阈值
+  function warriorRating(g) { return rateLetter(Math.round(ratingScore(g) / 6)); }
   function ratingChip(g) { const r = warriorRating(g); return `<span class="g grade-${r}">${r}</span>`; }
   const GRADE_COLOR = { SS: "#f4c430", S: "#ff4d3d", A: "#ff9020", B: "#3b9aff", C: "#46c357", D: "#c7923f", E: "#b0705a" };
   function gradeColor(v) { return GRADE_COLOR[rateLetter(v)]; }
