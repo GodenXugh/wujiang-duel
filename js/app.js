@@ -59,19 +59,8 @@
     DIMS.forEach(([k]) => { s += Math.max(0, (g[k] - 95) * 4); });
     return s;
   }
-  // 武将评级：以六维平均分为基底，单项越突出(A及以上)加权越多，体现「一招鲜」，再按评级阈值定级
-  function gradeBasis(g) {
-    let s = sumStats(g) / 6;
-    DIMS.forEach(([k]) => {
-      const v = g[k];
-      if (v >= 100) s += 9;        // 单项 SS
-      else if (v >= 95) s += 6;    // 单项 S
-      else if (v >= 90) s += 4;    // 单项 A
-      else if (v >= 80) s += 1.5;  // 单项 B
-    });
-    return s;
-  }
-  function warriorRating(g) { return rateLetter(Math.round(gradeBasis(g))); }
+  // 武将评级：武将评分（含突出加成）÷6，再套用与单项相同的评级阈值
+  function warriorRating(g) { return rateLetter(Math.round(ratingScore(g) / 6)); }
   function ratingChip(g) { const r = warriorRating(g); return `<span class="g grade-${r}">${r}</span>`; }
   const GRADE_COLOR = { SS: "#f4c430", S: "#ff4d3d", A: "#ff9020", B: "#3b9aff", C: "#46c357", D: "#c7923f", E: "#b0705a" };
   function gradeColor(v) { return GRADE_COLOR[rateLetter(v)]; }
