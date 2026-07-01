@@ -53,17 +53,26 @@
   const DIMS = [["ti", "体力"], ["wu", "武力"], ["tong", "统帅"], ["zhi", "智力"], ["zheng", "政治"], ["mei", "魅力"]];
   function sumStats(g) { return g.ti + g.wu + g.tong + g.zhi + g.zheng + g.mei; }
   function gradeChip(v) { const r = rateLetter(v); return `<span class="g grade-${r}">${r}</span>`; }
-  // 武将评分 = 六维之和 + 单项突出加成（A 不额外加分，S +10，SS +20）
+  // 武将评分 = 六维之和 + 单项突出加成（每项达 S 及以上：(该项数值-95)×4，未达 S 不加分）
   function ratingScore(g) {
     let s = sumStats(g);
+    DIMS.forEach(([k]) => { s += Math.max(0, (g[k] - 95) * 4); });
+    return s;
+  }
+  // 武将评级：以六维平均分为基底，单项越突出(A及以上)加权越多，体现「一招鲜」，再按评级阈值定级
+  function gradeBasis(g) {
+    let s = sumStats(g) / 6;
     DIMS.forEach(([k]) => {
       const v = g[k];
-      if (v >= 100) s += 20;       // 单项 SS
-      else if (v >= 95) s += 10;   // 单项 S
-      // A 及以下不额外加分
+      if (v >= 100) s += 9;        // 单项 SS
+      else if (v >= 95) s += 6;    // 单项 S
+      else if (v >= 90) s += 4;    // 单项 A
+      else if (v >= 80) s += 1.5;  // 单项 B
     });
     return s;
   }
+  function warriorRating(g) { return rateLetter(Math.round(gradeBasis(g))); }
+  function ratingChip(g) { const r = warriorRating(g); return `<span class="g grade-${r}">${r}</span>`; }
   const GRADE_COLOR = { SS: "#f4c430", S: "#ff4d3d", A: "#ff9020", B: "#3b9aff", C: "#46c357", D: "#c7923f", E: "#b0705a" };
   function gradeColor(v) { return GRADE_COLOR[rateLetter(v)]; }
 
@@ -123,7 +132,7 @@
       <div style="font-size:13px;color:#8a6d3b;margin-top:2px">${g.title || ''}</div>
       <div class="wdesc">${g.intro || ''}</div>
       <div class="radar-wrap">${radarSVG(g)}</div>
-      <div class="overall-line">武将评分 <b class="ov-sum">${ratingScore(g)}</b> <span class="ov-num">(六维 ${sumStats(g)} + 突出加成 ${ratingScore(g) - sumStats(g)})</span></div>
+      <div class="overall-line">武将评分 <b class="ov-sum">${ratingScore(g)}</b> <span class="ov-num">(六维 ${sumStats(g)} + 突出加成 ${Math.round(ratingScore(g) - sumStats(g))})</span> · 武将评级 ${ratingChip(g)}</div>
       <div class="stat-rows">${statRow('体力', g.ti)}${statRow('武力', g.wu)}${statRow('统帅', g.tong)}${statRow('智力', g.zhi)}${statRow('政治', g.zheng)}${statRow('魅力', g.mei)}</div>
       <div class="btns">
         ${opts.pickable ? `<button class="btn-primary" id="detail-pick">选他出战</button>` : ''}
@@ -269,7 +278,7 @@
     const g = fighter.g;
     $(".favatar", el).textContent = avatarChar(g.name);
     $(".fname", el).textContent = g.name;
-    $(".ftotal", el).innerHTML = `武将评分 <b>${ratingScore(g)}</b>`;
+    $(".ftotal", el).innerHTML = `武将评分 <b>${ratingScore(g)}</b> ${ratingChip(g)}`;
     // 头像/姓名右侧的五维（评级 + 数值彩条 + 数值；体力另以下方血条呈现）
     $(".fstats", el).innerHTML = DIMS.filter(([k]) => k !== "ti").map(([k, label]) =>
       `<div class="fs-row"><span class="fs-lbl">${label[0]}</span>` +
@@ -1467,7 +1476,7 @@
               <span class="rr-track"><span class="rr-bar" style="width:${Math.min(100, v / 1.2)}%;background:${gradeColor(v)}"></span></span>
               <b>${v}</b>${gradeChip(v)}</div>`;
           }).join("")}
-            <div class="rr-sum">基线评分 <b>${ratingScore(r.base)}</b> · 可分配加点 <b style="color:var(--cn-gold)">${r.points}</b></div>
+            <div class="rr-sum">基线评分 <b>${ratingScore(r.base)}</b> ${ratingChip(r.base)} · 可分配加点 <b style="color:var(--cn-gold)">${r.points}</b></div>
           </div>
           <div class="rpg-create-btns">
             <button class="cup-go" id="rpg-reroll">🎲 重新随机</button>
@@ -1498,7 +1507,7 @@
       if (kw) arr = arr.filter(g => g.name.includes(kw));
       $("#rpg-pick-grid").innerHTML = arr.slice(0, 80).map(g =>
         `<div class="card ${g.side}" data-id="${g.id}"><div class="avatar">${avatarChar(g.name)}</div>
-          <div class="cname">${g.name}</div><div class="cwu">评分 ${ratingScore(g)}</div></div>`).join("");
+          <div class="cname">${g.name}</div><div class="cwu">评分 ${ratingScore(g)} ${ratingChip(g)}</div></div>`).join("");
       $$("#rpg-pick-grid .card").forEach(c => c.onclick = () => {
         const g = DB.get(+c.dataset.id);
         const base = {}; DIMS.forEach(([k]) => base[k] = g[k]);
@@ -1538,9 +1547,9 @@
         <div class="rpg-overview">
           <div class="rpg-radar">${radarSVG(this.heroGeneral(), 190)}</div>
           <div class="rpg-total">
-            <div class="rt-lbl">武将评分</div>
+            <div class="rt-lbl">武将评分 ${ratingChip(this.heroGeneral())}</div>
             <div class="rt-num">${ratingScore(this.heroGeneral())}</div>
-            <div class="rt-grade">六维 ${sum} + 突出 ${ratingScore(this.heroGeneral()) - sum}</div>
+            <div class="rt-grade">六维 ${sum} + 突出 ${Math.round(ratingScore(this.heroGeneral()) - sum)}</div>
           </div>
         </div>
         <div class="rpg-points">可分配加点：<b>${c.points}</b> ${c.points > 0 ? '（点 ＋ 分配）' : ''}</div>
@@ -1730,13 +1739,14 @@
       });
       const arrow = k => this.sort.key === k ? (this.sort.dir > 0 ? " ▲" : " ▼") : "";
       const th = (k, label) => `<th data-sort="${k}" class="${this.sort.key === k ? 'sorted' : ''}">${label}${arrow(k)}</th>`;
-      const head = `<tr>${th("name", "姓名")}${DIMS.map(([k, l]) => th(k, l[0])).join("")}${th("rating", "评分")}<th>操作</th></tr>`;
+      const head = `<tr>${th("name", "姓名")}${DIMS.map(([k, l]) => th(k, l[0])).join("")}${th("rating", "评分")}<th>评级</th><th>操作</th></tr>`;
       const body = arr.map(g => {
         const cells = DIMS.map(([k]) => `<td class="num gt-${rateLetter(g[k])}">${g[k]}</td>`).join("");
         return `<tr data-id="${g.id}">
           <td class="dt-name ${g.side}"><span class="dt-dot"></span>${g.name}</td>
           ${cells}
           <td class="dt-total">${ratingScore(g)}</td>
+          <td class="dt-grade">${ratingChip(g)}</td>
           <td class="dt-act">
             <button class="db-view" data-act="view">详</button>
             <button class="db-edit" data-act="edit">改</button>
