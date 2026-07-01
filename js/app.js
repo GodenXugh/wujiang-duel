@@ -1133,7 +1133,7 @@
    * ============================================================ */
   const TeamBattle = {
     gen: 0, cn: [], jp: [], playerSide: "cn", delegated: false, running: false,
-    round: 0, kills: { player: 0, ai: 0 }, rpg: false, picking: null,
+    round: 0, kills: { player: 0, ai: 0 }, rpg: false, picking: null, activeUnit: null,
 
     aiSide() { return this.playerSide === "cn" ? "jp" : "cn"; },
     playerArr() { return this[this.playerSide]; },
@@ -1146,6 +1146,7 @@
       this.playerSide = side;
       this.delegated = false;
       this.picking = null;
+      this.activeUnit = null;
       this.running = true;
       this.round = 0;
       this.rpg = !!opts.rpg;
@@ -1166,6 +1167,9 @@
       showScreen("teamwar");
       $("#tw-log").innerHTML = "";
       $("#tw-actions").innerHTML = "";
+      // 强制重建武将行 DOM：避免沿用上一场战斗遗留的行节点（其点击事件闭包绑定的是上一场的武将对象）
+      $("#tw-cn").innerHTML = "";
+      $("#tw-jp").innerHTML = "";
       $("#tw-status").textContent = "两军列阵，大战一触即发！";
       this.log(`双方列阵完毕：你方（${sideName(side)}）${mine.length} 将　迎战　敌方（${sideName(oppSide)}·AI）${theirs.length} 将！`);
       this.renderBoard();
@@ -1187,6 +1191,8 @@
           if (!unit.alive) continue;
           if (!this.enemyArrOf(unit).filter(u => u.alive).length) break;  // 对面已全灭，提前结束本轮
           $("#tw-status").textContent = `第 ${this.round} 回合 —— 轮到 ${unit.g.name}（${sideName(unit.side)}）行动`;
+          this.activeUnit = unit;
+          this.renderBoard();
           if (unit.side === this.playerSide && !this.delegated) {
             await this.playerTurn(unit);
           } else {
@@ -1346,30 +1352,62 @@
       const alive = arr.filter(u => u.alive);
       return { score: alive.reduce((s, u) => s + ratingScore(u.g), 0), troops: alive.reduce((s, u) => s + u.troops, 0) };
     },
-    renderBoard() {
-      const row = (u, i) => {
-        const pickable = this.picking && this.picking.arr.includes(u);
-        return `<div class="tw-unit ${u.alive ? "" : "dead"} ${pickable ? "pickable" : ""}" data-side="${u.side}" data-idx="${i}">
-          <div class="tw-name">${u.g.name}${u.side === this.playerSide ? ' <span class="tw-you">你</span>' : ""}</div>
-          <div class="tw-troops">${u.troops}</div>
-          <div class="tw-track"><span class="tw-fill" style="width:${Math.max(0, u.troops / u.maxTroops * 100)}%"></span></div>
-        </div>`;
+    // 数字滚动过渡：兵力数值变化时不直接跳变，而是在 dur 毫秒内平滑滚动到新值
+    animateNumber(el, from, to, dur = 500) {
+      if (from === to) { el.textContent = to; return; }
+      const t0 = performance.now();
+      const tick = now => {
+        const p = Math.min(1, (now - t0) / dur);
+        el.textContent = Math.round(from + (to - from) * p);
+        if (p < 1) requestAnimationFrame(tick);
       };
-      $("#tw-cn").innerHTML = this.cn.map(row).join("");
-      $("#tw-jp").innerHTML = this.jp.map(row).join("");
+      requestAnimationFrame(tick);
+    },
+    renderBoard() {
+      this.syncRoster($("#tw-cn"), this.cn);
+      this.syncRoster($("#tw-jp"), this.jp);
       const cnT = this.teamTotals(this.cn), jpT = this.teamTotals(this.jp);
       $("#tw-sum-cn").innerHTML = `<span class="tws-tag">🐲 三国 ${this.cn.filter(u => u.alive).length}/${this.cn.length}</span><span class="tws-stat">评分 ${cnT.score}</span><span class="tws-stat">兵力 ${cnT.troops}</span>`;
       $("#tw-sum-jp").innerHTML = `<span class="tws-tag">🏯 战国 ${this.jp.filter(u => u.alive).length}/${this.jp.length}</span><span class="tws-stat">评分 ${jpT.score}</span><span class="tws-stat">兵力 ${jpT.troops}</span>`;
-      // 拾取模式下点选整行即选中目标；平时点击武将姓名弹出武将详情
-      $$("#tw-cn .tw-unit, #tw-jp .tw-unit").forEach(el => {
-        const u = this[el.dataset.side][+el.dataset.idx];
-        el.onclick = e => {
-          if (this.picking) {
-            if (this.picking.arr.includes(u)) { const cb = this.picking.cb; this.picking = null; this.renderBoard(); cb(u); }
-            return;
-          }
-          if (e.target.closest(".tw-name")) showDetail(u.g);
-        };
+    },
+    // 每名武将对应一个常驻的行 DOM（只建一次），之后仅更新其内容——
+    // 这样兵力条宽度变化/数字滚动才能真正过渡，而不是每次重建节点导致的瞬间跳变
+    syncRoster(container, arr) {
+      if (container.children.length !== arr.length) {
+        container.innerHTML = arr.map((u, i) => `<div class="tw-unit" data-idx="${i}">
+          <div class="tw-namewrap"><span class="tw-name"></span><span class="tw-troops"></span></div>
+          <div class="tw-track"><span class="tw-fill"></span></div>
+        </div>`).join("");
+        $$(".tw-unit", container).forEach(el => {
+          const u = arr[+el.dataset.idx];
+          el.onclick = e => {
+            if (this.picking) {
+              if (this.picking.arr.includes(u)) { const cb = this.picking.cb; this.picking = null; this.renderBoard(); cb(u); }
+              return;
+            }
+            if (e.target.closest(".tw-name")) showDetail(u.g);
+          };
+        });
+      }
+      arr.forEach((u, i) => {
+        const el = container.children[i];
+        const pickable = !!(this.picking && this.picking.arr.includes(u));
+        el.classList.toggle("dead", !u.alive);
+        el.classList.toggle("pickable", pickable);
+        el.classList.toggle("current", u === this.activeUnit && u.alive);
+        const nameEl = el.querySelector(".tw-name");
+        if (nameEl.textContent !== u.g.name) nameEl.textContent = u.g.name;
+        const troopsEl = el.querySelector(".tw-troops");
+        const prevTroops = u._dispTroops == null ? u.troops : u._dispTroops;
+        if (troopsEl.textContent === "") troopsEl.textContent = u.troops;
+        else if (prevTroops !== u.troops) this.animateNumber(troopsEl, prevTroops, u.troops);
+        u._dispTroops = u.troops;
+        el.querySelector(".tw-fill").style.width = Math.max(0, u.troops / u.maxTroops * 100) + "%";
+        // 击杀特效：刚由存活转为阵亡时，闪烁高亮一下再落定为灰暗状态
+        if (!u.alive && u._wasAlive) {
+          el.classList.remove("kill-flash"); void el.offsetWidth; el.classList.add("kill-flash");
+        }
+        u._wasAlive = u.alive;
       });
     },
     log(text) {
@@ -1380,6 +1418,8 @@
     finish(myGen) {
       if (this.gen !== myGen) return;
       this.running = false;
+      this.activeUnit = null;
+      this.renderBoard();
       const cnAlive = this.cn.filter(u => u.alive).length, jpAlive = this.jp.filter(u => u.alive).length;
       const playerWon = this.playerSide === "cn" ? cnAlive > 0 : jpAlive > 0;
       const mineAlive = this.playerSide === "cn" ? cnAlive : jpAlive, mineTotal = this.playerArr().length;
