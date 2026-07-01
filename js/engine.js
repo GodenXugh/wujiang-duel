@@ -14,7 +14,7 @@ const TACTICS = {
   bind:    { key: "bind",    name: "束缚", icon: "🪢", desc: "计策(免费)：使敌方下一回合暂停出招；发动后仍可出招，每回合限一计", stam: 12, type: "scheme", scheme: "bind", free: true },
   weaken:  { key: "weaken",  name: "弱化", icon: "🌀", desc: "计策(免费)：削弱敌方攻击力，时长随智力而定；发动后仍可出招，每回合限一计", stam: 10, type: "scheme", scheme: "weaken", free: true },
   heal:    { key: "heal",    name: "疗伤", icon: "💊", desc: "计策：运功恢复自身体力（占用行动）；成败与回复随智力而定",          stam: 11, type: "scheme", scheme: "heal" },
-  charge:  { key: "charge",  name: "蓄力", icon: "🔥", desc: "计策：凝气蓄力恢复战意、下次出招暴发（占用行动）；成败与成效随智力而定", stam: 4, type: "scheme", scheme: "charge" },
+  charge:  { key: "charge",  name: "蓄力", icon: "🔥", desc: "计策：凝气蓄力（消耗战意）、下次出招暴发（占用行动）；成败随智力而定", stam: 12, type: "scheme", scheme: "charge" },
 };
 
 // 相克关系：attacker 战术 对 defender 战术的倍率
@@ -99,14 +99,12 @@ function applyScheme(o, scheme, ok) {
       text: `${an} 施展【弱化】，${dn} 攻击力下降 ${Math.round(reduce * 100)}%（${dur}回合）！` };
   }
   if (scheme === "charge") {
-    // 蓄力计策：成功则恢复战意并蓄势（成效随智力）
+    // 蓄力计策：消耗战意换取下次出招暴发；成败随智力而定
     if (!ok) return { who: o.label, type: "scheme", scheme, ok: false, attacker: an,
       text: `${an} 试图凝气蓄力，却心绪难平，未能成势。` };
-    const gain = Math.round(6 + a.g.zhi * 0.12);   // 回复量较此前砍半以上
-    a.stam = Math.min(100, a.stam + gain);
     a.charged = true;
-    return { who: o.label, type: "charge", scheme, ok: true, attacker: an, gain,
-      text: `${an} 凝气蓄力，战意 +${gain}，蓄势待发！` };
+    return { who: o.label, type: "charge", scheme, ok: true, attacker: an,
+      text: `${an} 凝气蓄力，蓄势待发！` };
   }
   // heal（回复量较此前下调）
   const before = a.hp;
@@ -236,8 +234,8 @@ function resolveTurn(attacker, defender, plan, who) {
     events.push({ who, type: "defend", attacker: attacker.g.name,
       text: `${attacker.g.name} 凝神格挡，下一次受击将卸去伤害、化作战意！` });
   } else if (tac.type === "scheme") {
-    // 占用行动的计策：蓄力(charge) / 疗伤(heal)；蓄力恢复战意故不扣战意
-    if (mk !== "charge") { attacker.stam = Math.max(0, attacker.stam - staminaCost(mk, attacker.g)); }
+    // 占用行动的计策：蓄力(charge) / 疗伤(heal)，均消耗战意
+    attacker.stam = Math.max(0, attacker.stam - staminaCost(mk, attacker.g));
     attacker.stance = "normal";   // 用计姿态门户大开
     const ok = Math.random() < schemeSuccess(attacker, defender, tac.scheme);
     events.push(applyScheme(o, tac.scheme, ok));
@@ -252,6 +250,8 @@ function resolveTurn(attacker, defender, plan, who) {
     } else {
       const res = computeDamage(attacker, defender, mk, defender.stance || "normal", wasCharged);
       defender.hp = Math.max(0, defender.hp - res.dmg);
+      // 受创换取战意：谋攻无视格挡，直接按所受伤害比例转化
+      defender.stam = Math.min(100, defender.stam + Math.round(res.dmg * HIT_STAM_RATE));
       events.push({
         who, type: "hit", dmg: res.dmg, crit: res.crit, counter: res.counter, charged: wasCharged, tactic: mk,
         attacker: attacker.g.name, defender: defender.g.name, defHp: defender.hp, defMax: defender.maxHp,
@@ -267,13 +267,15 @@ function resolveTurn(attacker, defender, plan, who) {
     attacker.stam = Math.max(0, attacker.stam - staminaCost(mk, attacker.g));
     const wasCharged = attacker.charged; attacker.charged = false;
     const res = computeDamage(attacker, defender, mk, defender.stance || "normal", wasCharged);
-    // 守方格挡：按统帅/武力比例卸伤，卸掉的伤害全部转化为守方战意
+    // 守方格挡：按统帅/武力比例卸伤，卸掉的伤害全部转化为守方战意（额外加成）
     if (defender.guard) {
       const blocked = Math.round(res.dmg * guardBlockFrac(defender, attacker));
       res.dmg = Math.max(0, res.dmg - blocked);
       defender.stam = Math.min(100, defender.stam + blocked);
       defender.guard = false; res.guarded = true; res.blocked = blocked;
     }
+    // 受创换取战意：按最终所受伤害比例转化；有格挡时在上面的加成之外再叠加基础转化
+    defender.stam = Math.min(100, defender.stam + Math.round(res.dmg * HIT_STAM_RATE));
     defender.hp = Math.max(0, defender.hp - res.dmg);
     attacker.stance = mk;
     let text = buildHitText(attacker.g.name, defender.g.name, mk, res, wasCharged);
@@ -301,6 +303,8 @@ function staminaCost(tactic, g) {
 }
 // 「政治」→ 每回合战意恢复
 function staminaRegen(g) { return 2 + (g.zheng || 0) / 22; }
+// 受击换取战意：所受伤害的这个比例转化为守方战意（格挡卸下的伤害另有全额加成，见上）
+const HIT_STAM_RATE = 0.35;
 
 function buildHitText(atk, def, tactic, res, charged) {
   const t = TACTICS[tactic].name;

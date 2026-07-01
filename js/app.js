@@ -522,8 +522,7 @@
     wrap.innerHTML = Object.values(TACTICS).map(t => {
       const cost = staminaCost(t.key, g);
       const chosen = used[t.key] ? " chosen" : "";
-      const costLbl = t.key === "charge" ? `<span class="stcost gain">回战意</span>`
-        : (cost <= 0 ? `<span class="stcost">免耗</span>` : `<span class="stcost">耗${cost}</span>`);
+      const costLbl = cost <= 0 ? `<span class="stcost">免耗</span>` : `<span class="stcost">耗${cost}</span>`;
       return `<button class="tactic-btn ${t.type === "scheme" ? "scheme" : ""}${t.free ? " free" : ""}${chosen}" data-t="${t.key}" title="${t.desc}">
         <span class="ti">${t.icon}</span><span class="tn">${t.name}</span>
         ${costLbl}
@@ -533,8 +532,8 @@
       const key = b.dataset.t;
       const t = TACTICS[key];
       const cost = staminaCost(key, g);
-      // 蓄力/格挡不因战意不足而禁用；其余按战意消耗判定
-      let dis = !enabled || BATTLE.spectate || (cost > 0 && key !== "charge" && BATTLE.p1.stam < cost);
+      // 格挡不耗战意，故不因战意不足而禁用；其余（含蓄力）按战意消耗判定
+      let dis = !enabled || BATTLE.spectate || (cost > 0 && BATTLE.p1.stam < cost);
       if (t.free && used[key]) dis = true;   // 该免费计策本回合已发动
       b.disabled = dis;
       b.onclick = () => (t.free ? chooseFree(key) : playerTactic(key));
@@ -710,7 +709,7 @@
       AudioSystem.sfx.charge();
       Duel.setCharge(atk, true);
       logLine(ev.text, cls);
-      // 蓄力恢复战意：刷新双方血条/战意条
+      // 蓄力消耗战意：刷新双方血条/战意条
       updateBars($("#f-left"), BATTLE.p1);
       updateBars($("#f-right"), BATTLE.p2);
       await battleSleep(380);
